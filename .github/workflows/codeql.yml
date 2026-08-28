@@ -53,3 +53,10 @@ jobs:
         uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           category: "/language:${{ matrix.language }}"
+          # Dependabot-triggered runs get a read-only GITHUB_TOKEN, so uploading
+          # SARIF fails with "Resource not accessible by integration" -- which
+          # makes this check red on every dependency PR, and a required check that
+          # can never pass blocks that PR forever. The scan still runs; only the
+          # upload is skipped, and pushes to the default branch upload the same
+          # results anyway.
+          upload: ${{ github.actor != 'dependabot[bot]' }}
