@@ -1,0 +1,9 @@
+{
+  "repo": "https://github.com/affaan-m/ECC.git",
+  "branch": "main",
+  "reviewed_through": "5eddf1a3ffd311423be2d4ba7d26f7209c91b033",
+  "reviewed_date": "2026-08-28",
+  "notes": "2026-08-28 首次同步：d8409a4 之後的 56 個上游 commit 以 merge 整批取用——本 fork 相對起點只改 32 檔，與上游動到的 70 檔僅 3 個重疊且已自動合併、overlay 實查仍在。PR/issue 兩個面向本檔先前完全沒有（不是查過沒發現，是根本沒查），本輪補上並以 --state all 記水位；上游高速開發（PR 已到 #2891），取用方式是合併 upstream/main，已合併的 PR 隨合併進來，open PR 預設不提前引用。逐項判準與兩筆觀察中的 PR 記在 FORK.md。",
+  "reviewed_pr_through": 2891,
+  "reviewed_issue_through": 2886
+}

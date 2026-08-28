@@ -1,0 +1,55 @@
+name: CodeQL
+
+# 這個 repo 三種語言都有可掃的量：JavaScript/TypeScript 518+19+3 檔（安裝腳本、
+# hooks、dashboard 前端）、Python 66 檔（provider、工具、測試）、以及 workflow
+# 本身——CI 會在 pull_request 事件下執行 repo 內的腳本，workflow 注入與過寬的
+# 權限是測試問不到的類型。
+#
+# Rust（17 檔）與 shell（34 檔）沒有納入：CodeQL 不支援 shell，而 Rust 支援仍在
+# 演進、且本 repo 的 Rust 不在任何執行路徑上（`ecc2/` 的實驗程式）。要納入時
+# 先確認 CodeQL 的 Rust 分析在這個版本已經穩定。
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "23 5 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Security scan (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+        with:
+          category: "/language:${{ matrix.language }}"
