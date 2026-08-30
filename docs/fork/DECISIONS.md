@@ -79,3 +79,63 @@ commit 水位。那兩個面向不是「查過沒發現」，是根本沒查，�
 綠燈不是「沒有待辦」，是沒有人看。
 
 **觸發條件**：報告列出項目時逐筆讀 diff、把採用／略過理由寫進本檔，然後才推進 baseline 的水位。
+
+
+## 2026-08-30：上游 #2892–#2906 的逐筆判定
+
+PR 水位 2891 → 2904；issue 水位 2886 → 2906。**commit 水位不推進**——上游在 `5eddf1a` 之後
+累積 **118 個 commit**，那批還沒讀，推進等於宣稱審過。
+
+### 採用：`hooks.json` 的 `matcher: "*"` 讓 16 組 hook 從來沒載入過（對齊上游 #2904／#2751）
+
+**自己驗證過的事實**（不是照抄 PR 描述）：`node -e "new RegExp('*')"` 丟
+`Invalid regular expression: /*/: Nothing to repeat`。Claude Code 把字串 matcher 當**正規表示式**，
+所以 `"*"` 不是萬用字元，是**無效**——整組會被 loader 靜靜丟掉。
+
+**本 fork 的實際狀況**：`hooks/hooks.json` 23 個 matcher 裡有 **16 個**是 `"*"`，
+`hooks/codex-hooks.json` 1 個。受影響的包含**全部 7 個 `Stop`** 與 `SessionEnd`、
+`PreCompact`、兩個 `SessionStart`、兩個 `PreToolUse`、兩個 `PostToolUse`、`PostToolUseFailure`。
+也就是說這些 hook 一直都沒有在跑。全部改成 `.*`。
+
+**為什麼沒有被發現**：`scripts/ci/validate-hooks.js` 印的是
+`Validated 23 hook matchers`——它**數**了 23 個，但從來沒有**編譯**過任何一個。
+已補上：每個字串 matcher 都 `new RegExp()` 一次，失敗就報錯並指出萬用字元是 `.*`。
+反向驗證過：把一個 `.*` 改回 `*`，檢查器立刻報
+`PreToolUse[3] matcher "*" is not a valid regular expression`；還原後回綠。
+
+### 採用：`pr` 與 `prp-pr` 的描述逐位元組相同（上游 issue #2905）
+
+**在本 fork 重現**：兩支指令的 `description:` 完全一樣。描述是模型從指令清單挑選時**唯一**看得到的
+文字，所以這不是「相似」，是**無法決定**。
+
+兩者實際的差別（讀 diff）：`prp-pr` 走 PRP 工作流——連結 `.claude/PRPs/` 底下的 reports／plans／
+PRDs，未提交時指向 `/prp-commit`；`pr` 是通用版，連結 `.claude/prds/` 與 `.claude/plans/`。
+描述照這個差別改寫，並各自寫出「什麼時候該用另一支」。
+
+同樣補上防止再犯的檢查：`validate-commands.js` 現在會把共用同一句描述的指令報成錯誤。
+全庫實查：94 個指令，改完之後 **0 組**重複描述。反向驗證過。
+
+### 已涵蓋：`block-no-verify` 誤判引號內文字（上游 #2897，OPEN）
+
+**實測本 fork 的 `scripts/hooks/block-no-verify.js`**：
+
+| 輸入 | 結果 |
+| --- | --- |
+| `git commit --no-verify -m x` | **擋下**（真的用了旗標） |
+| `git commit -m "do not use --no-verify here"` | 放行 |
+| `git commit -am "explain why --no-verify is banned"` | 放行 |
+| `git commit -F - <<EOF … --no-verify … EOF` | 放行 |
+
+本 fork 已經是旗標位置感知的 tokenizer，沒有上游要修的那個誤判。無可引用內容。
+
+### 不引用：其餘各筆
+
+| 項目 | 狀態 | 理由 |
+| --- | --- | --- |
+| `#2899`／`#2902` | **MERGED** | 依本 fork 既定規則（見 `FORK.md` 2026-08-28 節），已合併的 PR 隨下次 `git merge upstream/main` 進來，不在 PR 軸逐筆看 |
+| `#2895` | CLOSED 未合併 | 把 `.omo/` 加進 `.gitignore`。實查本 fork：`.gitignore` 沒有該項、目錄也不存在——本線沒有那個 runtime，沒有東西要忽略 |
+| `#2893`／`#2894` | OPEN | 分別是 ito-compute 文件與 plan-canvas 的 PDF 匯出。依既定規則 open PR 預設不提前引用（那是提案不是上游已接受的變更），且兩者都不是本 fork 現在就在痛的缺陷 |
+| `#2892` | CLOSED 未合併 | GateGuard 的分級復原提示，只動 `gateguard-fact-force.js`。是體驗增強不是缺陷，上游自己也沒有合併 |
+| `#2898`／`#2903` | CLOSED 未合併 | 上游自己的 forward-port 批次（內容修正、truth／privacy 五筆）。上游未採納，且其中點名的檔案要逐筆對照才知道適用性——**留待 118 個 commit 的批次審查時一併處理**，那時它們的內容若進了 `main` 會經由 commit 軸抵達 |
+| `#2896`／`#2900`／`#2901` | issue | 分別是空白 issue、第三方掃描報告、外部索引邀請。無可引用內容 |
+| `#2906` | issue，**已驗證成立但本輪不做** | 「94 個指令描述沒有一個帶觸發語句」。實查本 fork 確實如此。但那是 94 份檔案的批次改寫，且每一份都要讀內容才寫得出真的觸發語句——不是這一輪的範圍。**觸發條件**：安排一次指令描述的整體改寫時處理 |

@@ -174,6 +174,34 @@ function validateCommands() {
     }
   }
 
+  // The description is the only text a model sees when picking from the command
+  // listing, so two commands sharing one is not "similar" -- it is undecidable.
+  // `pr` and `prp-pr` shipped byte-identical descriptions and were therefore
+  // indistinguishable at selection time.
+  const byDescription = new Map();
+  for (const file of files) {
+    let content;
+    try {
+      content = fs.readFileSync(path.join(COMMANDS_DIR, file), 'utf-8');
+    } catch {
+      continue;
+    }
+    const match = content.match(/^description:\s*(.+)$/m);
+    if (!match) continue;
+    const description = match[1].trim().replace(/^["']|["']$/g, '');
+    if (!description) continue;
+    if (!byDescription.has(description)) byDescription.set(description, []);
+    byDescription.get(description).push(file);
+  }
+  for (const [description, sharing] of byDescription) {
+    if (sharing.length > 1) {
+      console.error(
+        `ERROR: ${sharing.join(', ')} share one description, so nothing can choose between them: ${JSON.stringify(description.slice(0, 80))}`,
+      );
+      hasErrors = true;
+    }
+  }
+
   if (hasErrors) {
     process.exit(1);
   }

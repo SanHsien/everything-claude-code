@@ -1,5 +1,5 @@
 ---
-description: "Create a GitHub PR from current branch with unpushed commits — discovers templates, analyzes changes, pushes"
+description: "Create a GitHub PR from the current branch's unpushed commits — discovers templates, analyzes changes, pushes, and links any PRDs or plans under .claude/prds/ and .claude/plans/. The general-purpose one; use /prp-pr only for the PRP workflow."
 argument-hint: "[base-branch] (default: main)"
 ---
 

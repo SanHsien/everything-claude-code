@@ -185,6 +185,21 @@ function validateHooks() {
         } else if ('matcher' in matcher && typeof matcher.matcher !== 'string' && (typeof matcher.matcher !== 'object' || matcher.matcher === null)) {
           console.error(`ERROR: ${eventType}[${i}] has invalid 'matcher' field`);
           hasErrors = true;
+        } else if (typeof matcher.matcher === 'string') {
+          // Compile it. Claude Code treats a string matcher as a regular
+          // expression, so `*` is not a wildcard -- it is invalid ("Nothing to
+          // repeat") and the whole group is silently dropped from the loader.
+          // This file counted 23 matchers as valid while 17 of them were `*`,
+          // which is how seven Stop hooks and SessionEnd never ran. Counting
+          // matchers is not the same as checking them.
+          try {
+            new RegExp(matcher.matcher);
+          } catch (error) {
+            console.error(
+              `ERROR: ${eventType}[${i}] matcher ${JSON.stringify(matcher.matcher)} is not a valid regular expression: ${error.message}. The catch-all is '.*'.`,
+            );
+            hasErrors = true;
+          }
         }
         if (!matcher.hooks || !Array.isArray(matcher.hooks)) {
           console.error(`ERROR: ${eventType}[${i}] missing 'hooks' array`);
