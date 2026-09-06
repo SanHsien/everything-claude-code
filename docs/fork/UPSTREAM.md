@@ -53,3 +53,11 @@ workflow 變更必須核對官方-repo-only guard 是否仍在。
 
 **這一段當時漏寫**：baseline 推進了、`FORK.md` 寫了，但本檔沒有跟上，`test_baseline_matches_decisions_record`
 因此在 main 上紅著沒人處理。2026-08-29 補記。
+
+## 2026-09-01：bounded review
+
+Fork `50b19e47194d`；upstream `005eff40fd4a4ac005da7a70e713459175385516`。`5eddf1a..upstream`
+有 129 commits；只檢視 `638456c7`（翻譯）、`627d485f`（isolation docs）、`a0164707`（agent skill reference）。
+全範圍同時碰 host mirrors、commands、agents 與 CI，raw merge 會跨 fork overlay，故不採用、不推水位。
+下一切片：`a0164707` 後十筆 runtime/CI commit；逐筆 `git show` 後僅採自足修正，驗收
+`pwsh -NoProfile -File tools\dev_check.ps1`。
