@@ -1,0 +1,5 @@
+# pytest 9 需要較新的 Python；fork gate 只測維護腳本。
+# 讀根目錄 pyproject.toml 的 asyncio_mode，所以要裝 pytest-asyncio 才不會警告。
+pytest>=8.3.0
+pytest-asyncio>=1.4.0
+ruff>=0.16
