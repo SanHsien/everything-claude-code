@@ -191,3 +191,41 @@ Components、Security Scan、Coverage、Lint。這是 `main` 自 2026-08-27 以�
 `node tests/run-all.js` 在本機 Windows（Node 26、有 Git Bash、無 corepack）是 3836 過、58 敗，
 分布在 10 個檔。那 58 條在**乾淨 `HEAD` 加 `HEAD` 自己的 lockfile 重裝**之後逐條同名失敗，
 且 CI 上這 10 個檔是過的——屬本機環境，不是回歸。判斷改動有沒有引入失敗時以此為基準線。
+
+## 2026-09-30：上游 556 commits／271 PRs／91 issues 的分組判定（全部 adoption pending）
+
+範圍：commit `5eddf1a`..`c70874f`（556）、PR #2907–#3278（271）、issue #2909–#3279（91）。
+`origin/main` 已於 2026-09-27 壓成單一 root commit（`git merge-base HEAD upstream/main` 為空），
+`git diff --stat HEAD upstream/main` 為 1307 檔，故無法 merge，逐筆 `cherry-pick -x` 也無法在本機以
+完整 `npm test` 驗收（本機已有 58 條既存失敗，見 2026-09-11 條）。本輪**不採用任何 commit**，
+水位只代表「已審」。
+
+### 依類別判定
+
+| 類別 | 數量級 | 判定 |
+| --- | --- | --- |
+| 版本／release／依賴 bump（`2.2.1`／`2.2.2`、`chore(deps)`、Dependabot、SLSA／簽章 release gate） | 約 60 commit | not-applicable：本 fork 不發 npm；依賴另依 2026-09-11 條對齊上游驗過的版本 |
+| CI／測試穩定性（Windows／macOS timeout、fixture 隔離、catalog count 驗證） | 約 70 commit | follow-upstream：隨產品碼同步時一併帶入 |
+| 翻譯與 locale（uk-UA、pl-PL、ja-JP、tr、zh-TW、es） | 約 20 commit／PR | follow-upstream：文件層，無 fork 特有內容 |
+| 贊助、README 徽章、宣傳、社群 PR／issue（SerpApi、Atlas Cloud、Kimi、DevScratchpad、空白／`[Copilot]` 類 issue、測試用 PR） | 約 40 項 | not-applicable：上游專屬服務或無內容 |
+| 新功能（control-pane、plan-canvas、sandbox Tier 0–2、Agent IR、Lean/Full profiles、Rails／TypeScript／mlops／OSINT 等 skills、Antigravity／Vibe／Copilot／DeepSeek／Grok／Hermes adapters、ruby-reviewer、eval-harness） | 約 120 項 | follow-upstream：產品增量，非缺陷；open PR 依既定規則不提前引用 |
+| ecc2（Rust）與 LLM provider（Ollama／OpenAI 序列化、reasoning 剝除、cargo bump） | 約 25 項 | follow-upstream：本線不驗 Rust／provider 路徑 |
+| 安裝器與 OpenCode／Codex／Cursor 路徑（hook consent、settings 原子寫入、保留使用者檔案、uninstall `--dry-run`、Windows dev id、UTF-8 BOM、install-state stale ops） | 約 60 項 | adoption pending：資料遺失與 Windows 行為修正，但跨 install-lifecycle 多檔，需成組移植並跑 `tests/lib` 安裝測試 |
+| GateGuard／block-no-verify／PowerShell 破壞性指令閘（heredoc、SQL client、`dd`、git ref／history 破壞、匿名 exempt glob 限縮） | 約 60 項 | adoption pending：安全邊界修正，需整組帶入並跑 `tests/hooks` |
+| `hooks.json` schema 鍵（`$schema`／`id`／`description`，issue #3053／#3062／#3063／#3114／#3131／#3138／#3139／#3169；PR #3058／#3086／#3163） | 8 issue／3 PR | adoption pending：Claude Code 載入警告，本 fork `hooks/hooks.json` 同樣帶這些鍵；需連同 `validate-hooks.js` 與相關測試一起改 |
+| 其餘 hook／skill／agent 小修（observer、session-start worktree 範圍、config-protection、skill-stocktake、frontend-slides 路徑限制 #3101、memory-mcp `_meta` #2880） | 約 60 項 | adoption pending：逐項獨立，待下輪依 `tests/hooks`／`tests/lib` 切片 |
+
+### 下輪優先切片（觸發條件：安排一次產品碼同步）
+
+1. GateGuard／block-no-verify／PowerShell gate 整組（`tests/hooks`）。
+2. 安裝器 settings／consent／uninstall 整組（`tests/lib`）。
+3. `hooks.json` schema 鍵清理。
+4. frontend-slides 路徑限制（issue #3101，`[HIGH][SECURITY]`）。
+
+因 root commit 已重寫，建議以「對 `upstream/main` 做 tree 級 diff、排除 fork overlay 檔案」的方式一次同步，
+再跑完整 `npm test` 與 `tools\dev_check.ps1`；不要逐筆 cherry-pick 556 個 commit。
+
+### 水位
+
+- commit：`c70874fae9eb0e5ad0365beb7e2955899fd1d30f`
+- PR：#3278；issue：#3279

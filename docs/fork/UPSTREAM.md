@@ -60,3 +60,9 @@ Fork `50b19e47194d`；upstream `005eff40fd4a4ac005da7a70e713459175385516`。`5ed
 全範圍同時碰 host mirrors、commands、agents 與 CI，raw merge 會跨 fork overlay，故不採用、不推水位。
 下一切片：`a0164707` 後十筆 runtime/CI commit；逐筆 `git show` 後僅採自足修正，驗收
 `pwsh -NoProfile -File tools\dev_check.ps1`。
+
+## 2026-09-30：水位推進到 `c70874f`（僅為已審，未合併）
+
+`5eddf1a..c70874f` 共 556 commits、PR #2907–#3278、issue #2909–#3279 已分組判定，全部 adoption pending 或
+follow-upstream，未採用任何 commit。`origin/main` 已於 2026-09-27 壓成單一 root commit，與上游無共同祖先，
+無法 merge。分組結論與下輪切片見 [`DECISIONS.md`](DECISIONS.md) 同日條目。
