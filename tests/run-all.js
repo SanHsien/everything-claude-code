@@ -76,6 +76,7 @@ if (testFiles.length === 0) {
 let totalPassed = 0;
 let totalFailed = 0;
 let totalTests = 0;
+const failedFiles = [];
 
 for (const testFile of testFiles) {
   const testPath = path.join(testsDir, testFile);
@@ -132,6 +133,7 @@ for (const testFile of testFiles) {
   }
 
   if (failureReason) {
+    failedFiles.push(`${displayPath} (${failureReason})`);
     console.log(`✗ ${displayPath} ${failureReason}`);
     annotateFailure(displayPath, failureReason, combined);
   }
@@ -146,5 +148,13 @@ console.log(boxLine(`  Total Tests: ${String(totalTests).padStart(4)}`));
 console.log(boxLine(`  Passed:      ${String(totalPassed).padStart(4)}  ✓`));
 console.log(boxLine(`  Failed:      ${String(totalFailed).padStart(4)}  ${totalFailed > 0 ? '✗' : ' '}`));
 console.log('╚' + '═'.repeat(BOX_W) + '╝');
+if (failedFiles.length > 0) {
+  console.log('
+Failed test files:');
+  for (const entry of failedFiles) console.log(`  ✗ ${entry}`);
+}
 
-process.exit(totalFailed > 0 ? 1 : 0);
+// Set the exit code instead of calling process.exit(): on a POSIX pipe,
+// process.exit() can drop stdout that has not been flushed yet, which hid
+// every failure line in CI (fork fix, 2026-10-06).
+process.exitCode = totalFailed > 0 ? 1 : 0;
