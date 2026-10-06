@@ -149,8 +149,7 @@ console.log(boxLine(`  Passed:      ${String(totalPassed).padStart(4)}  ✓`));
 console.log(boxLine(`  Failed:      ${String(totalFailed).padStart(4)}  ${totalFailed > 0 ? '✗' : ' '}`));
 console.log('╚' + '═'.repeat(BOX_W) + '╝');
 if (failedFiles.length > 0) {
-  console.log('
-Failed test files:');
+  console.log('\nFailed test files:');
   for (const entry of failedFiles) console.log(`  ✗ ${entry}`);
 }
 
