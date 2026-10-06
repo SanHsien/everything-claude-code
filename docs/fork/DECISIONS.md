@@ -263,6 +263,7 @@ Components、Security Scan、Coverage、Lint。這是 `main` 自 2026-08-27 以�
 
 - 兩邊都有的檔：合併後才失敗的只有 `tests/ci/validators.test.js`（已修，修後單獨重跑 191 pass／0 fail）與 `tests/scripts/codex-hooks.test.js`（本機只剩新增的 symlink 案例，見下）。逾時的 `tests/lib/install-executor.test.js`、`tests/scripts/repair.test.js` 單獨重跑通過（116 秒、60 秒）。
 - 上游新增檔首輪失敗、單獨重跑通過的兩檔，屬負載下的不穩定：`tests/lib/powershell-destructive-command.test.js`（hook 時間預算案例）、`tests/scripts/profile-interactive.test.js`。
+- 上游新增檔首輪超過 180 秒而逾時、以 600 秒單獨重跑通過的 7 檔：`tests/lib/context-carriers.test.js`、`context-profile-eval`、`context-profile-interactive`（193 秒）、`context-profile-native`、`context-profile-store`、`context-selection`、`tests/scripts/profile-selection.test.js`。
 - `main` 原本就失敗或逾時的 10 檔（`claude-plugin-setup`、`claude-scope-migration`、`codex-legacy-sync`、`memory-vault`、`state-store`、`ecc-universal-bin`、`install-apply`、`memory-mcp`、`setup`、`uninstall`）：以純上游 `ef648e01` 副本在本機對照，除 `uninstall` 兩邊都通過外，其餘在上游樹同樣失敗，屬 Windows 本機環境，不是 fork 造成。
 - 上游新增檔中仍失敗的 6 檔都是本機環境限制：
   - 無法建立 symlink（`EPERM`）：`tests/lib/eval-harness/security.test.js`、`tests/lib/opencode-consent-legacy-lock.test.js`、`tests/scripts/coordination-inventory.test.js`、`tests/skills/build-agreement.test.js`、`tests/scripts/codex-hooks.test.js` 的一個案例。
@@ -270,8 +271,8 @@ Components、Security Scan、Coverage、Lint。這是 `main` 自 2026-08-27 以�
   - `tests/scripts/eval-harness-package.test.js`：Git Bash 的 GNU tar 把 `C:` 當成遠端主機；其聚合案例連帶失敗於上一列的 symlink 案例。
 - 壓成 commit 之後的修正（上表後四列）以個別測試驗證：`node tests/ci/run-all.test.js` 9 pass、`node tests/scripts/codex-hooks.test.js` 40 pass（唯一失敗為本機 symlink 案例）、`node scripts/build-pi-core.js --check` 為最新；`tools\dev_check.ps1` 綠。
 
-PR #4 CI：run 37455773240（`55bfdd8b`）Ubuntu 12 個 Test、Coverage、Pi Core Profile 失敗；run 37472728926（`daacacd0`）三平台的 `ci/run-all.test.js` 與 Ubuntu 的 `scripts/codex-hooks.test.js` 失敗；run 37544105599（`dc582031`）50 項全部通過。這些失敗正是本機 Windows 無法重現、只有 PR CI 才抓得到的部分；symlink 類安全測試由 CI 的 Linux／macOS 執行。
+PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，整體 cancelled，被下一次推送取代）14 個失敗（Ubuntu 12 個 Test、Coverage、Pi Core Profile）、5 個在取消前未跑完（4 個 macOS、1 個 Windows）；run 37472728926（`daacacd0`）34 個失敗（33 個 Test 加 Coverage；三平台都是 `ci/run-all.test.js`，Ubuntu 另有 `scripts/codex-hooks.test.js`）；run 37544105599（`dc582031`）43 個全部通過。之後只改文件的提交，以合併前最新一次 run 為準。這些失敗正是本機 Windows 無法重現、只有 PR CI 才抓得到的部分；symlink 類安全測試由 CI 的 Linux／macOS 執行。
 
-**CodeQL**：PR 帶入的上游程式碼新增 12 個高嚴重度警示（#197–#208），2026-10-07 依維護者授權附理由關閉：測試與 fixture 6 個（#199–#201、#206–#208）標 used in tests；`scripts/build-pi-core.js` 2 個（#197、#198，輸入為 repo 自己的 manifest）、`scripts/lib/context-pack-registry.js`（#205）、`scripts/ci/validate-hooks.js`（#203）、`scripts/lib/claude-dry-run-sandbox.js`（#204，讀使用者自己的 Claude 設定複製進 dry-run 沙箱，競態需要已能替換使用者設定檔）標 won't fix；`docker/context-profiles/run-sandbox.js`（#202，讀檔前後已比對 dev／ino／size）標 false positive。
+**CodeQL**：PR 帶入的上游程式碼新增 12 個高嚴重度警示（#197–#208），2026-10-06 21:37（+0800）依維護者授權附理由關閉（#204 的理由寫錯，10-07 07:33 重新開啟後以正確理由再關閉）：測試與 fixture 6 個（#199–#201、#206–#208）標 used in tests；`scripts/build-pi-core.js` 2 個（#197、#198，輸入為 repo 自己的 manifest）、`scripts/lib/context-pack-registry.js`（#205）、`scripts/ci/validate-hooks.js`（#203）、`scripts/lib/claude-dry-run-sandbox.js`（#204，讀使用者自己的 Claude 設定複製進 dry-run 沙箱，競態需要已能替換使用者設定檔）標 won't fix；`docker/context-profiles/run-sandbox.js`（#202，讀檔前後已比對 dev／ino／size）標 false positive。
 
 **PR／issue 軸**：本輪只採用 commit；PR #3279 起、issue #3280 起未逐筆審，水位不推進。
