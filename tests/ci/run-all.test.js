@@ -41,11 +41,19 @@ function run(result, filename = 'sample.test.js', actions = true) {
   } catch (error) {
     if (error !== exit) throw error;
   }
+  // run-all sets process.exitCode instead of calling process.exit() so a
+  // POSIX pipe keeps the failure output; read whichever one it used.
+  if (status === undefined) status = fakeProcess.exitCode;
   assert.strictEqual(spawns, 1);
   return { status, logs, annotations: logs.filter(line => line.startsWith('::error ')) };
 }
 
 const tests = [
+  ['ends by setting exitCode, not process.exit(), so piped output is not truncated', () => {
+    const code = source.split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('//'));
+    assert.match(code[code.length - 1], /^process\.exitCode = /,
+      'the final summary must set process.exitCode; process.exit() can drop unflushed stdout on a pipe');
+  }],
   ['nonzero exit overrides a zero-failure summary', () => {
     const result = run({ status: 1, stdout: 'Passed: 2, Failed: 0', stderr: 'Error: late crash' });
     assert.strictEqual(result.status, 1);

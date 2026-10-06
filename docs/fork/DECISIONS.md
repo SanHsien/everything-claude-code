@@ -246,6 +246,8 @@ Components、Security Scan、Coverage、Lint。這是 `main` 自 2026-08-27 以�
 | `install.ps1`、`install.sh` | 採上游。fork 加的 `npm install --ignore-scripts` 上游已採用 |
 | `package.json`、`package-lock.json`、`yarn.lock`、`docs/COMMAND-REGISTRY.json` | 採上游；註冊表以 `npm run command-registry:write`、`pi/core/` 以 `node scripts/build-pi-core.js` 重產（兩者都要反映 fork 的 `pr.md` 描述；`pi/core` 是上游新增的衍生檔，漏重產會讓 CI 的 Pi Core Profile 紅） |
 | `tests/run-all.js` | fork 修正：結尾由 `process.exit()` 改為設定 `process.exitCode`，並列出失敗檔名。PR CI 的 Ubuntu 測試在 POSIX 管線上被 `process.exit()` 截掉未寫完的輸出，看不到是哪個檔失敗（上游缺陷） |
+| `tests/ci/run-all.test.js` | 配合上一列：契約測試原本攔截 `process.exit()` 讀結束碼，改為也讀 `process.exitCode`（斷言的值不變），並新增一條釘住「最後一行是設定 exitCode」 |
+| `tests/scripts/codex-hooks.test.js` | fork 修正（上游缺陷）：「大小寫折疊」案例用 `__filename` 轉大寫或小寫後是否存在來判斷檔案系統不分大小寫；本 fork 的 repo 名稱全小寫，轉小寫後就是原檔，在 Linux 上誤判並執行而失敗（PR CI 的 Ubuntu 紅燈根因）。改為只用與原路徑不同的拼法判斷 |
 | `tools/test_fork_overlay.py` | 上游新增 `.github/workflows/taste-skills.yml`（只跑離線單元測試，`contents: read`、不發佈），歸入可在 fork 執行的 `UNGATED_WORKFLOWS` |
 | `tests/ci/validators.test.js` | fork 自加的兩個 matcher 測試補上 `id`：上游新規定物件格式的 hooks.json 每組 matcher 必須有穩定 `id`，否則測試資料先被 id 規則擋下 |
 
