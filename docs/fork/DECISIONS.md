@@ -236,29 +236,42 @@ Components、Security Scan、Coverage、Lint。這是 `main` 自 2026-08-27 以�
 
 **做法**：本機暫時分支先 `git merge -s ours --allow-unrelated-histories 5eddf1a`（不改樹，只給三方合併一個 base；`5eddf1a` 是本 fork 2026-09-27 壓縮前最後同步到的上游點，根樹與它只差 48 個 fork 檔），再 `git merge upstream/main`。暫時分支不推送。
 
-**衝突與取捨**（9 個衝突檔，fork 改過的 48 檔中有 25 檔上游也動過）：
+**衝突與取捨**（9 個衝突檔；fork 改過的 48 檔中有 25 檔上游也動過，其餘自動合併）：
 
 | 檔案 | 解法 |
 | --- | --- |
 | `AGENTS.md` | 保留 fork 開頭的維護區塊，其餘採上游（skill 數 286 → 293） |
-| `hooks/hooks.json`、`hooks/codex-hooks.json`、`tests/hooks/hooks.test.js`、`tests/hooks/posttooluse-dispatcher.test.js` | 採上游。fork 2026-08-30 把無效 regex `"*"` 改成 `".*"`，上游已做同樣修正，另把 MCP 健康檢查限縮為 `"^mcp__"`（#2838） |
+| `hooks/hooks.json` | 採上游。fork 2026-08-30 把無效 regex `"*"` 改成 `".*"`，上游已做同樣修正，另把 MCP 健康檢查限縮為 `"^mcp__"`（#2838）。同一修正在 `hooks/codex-hooks.json`、`tests/hooks/hooks.test.js`、`tests/hooks/posttooluse-dispatcher.test.js` 自動合併後與上游相同 |
 | `commands/prp-pr.md` | 採上游。fork 為了和 `pr` 描述不同而改寫，上游已改成「`/pr` 的別名」，同樣解決重複；`commands/pr.md` 保留 fork 版描述 |
 | `install.ps1`、`install.sh` | 採上游。fork 加的 `npm install --ignore-scripts` 上游已採用 |
-| `package.json`、`package-lock.json`、`yarn.lock`、`docs/COMMAND-REGISTRY.json` | 採上游；註冊表以 `npm run command-registry:write`、`pi/core/` 以 `node scripts/build-pi-core.js` 重產（兩者都要反映 fork 的 `pr.md` 描述；`pi/core` 是上游新增的衍生檔，漏重產會讓 CI 的 Pi Core Profile 紅） |
-| `tests/run-all.js` | fork 修正：結尾由 `process.exit()` 改為設定 `process.exitCode`，並列出失敗檔名。PR CI 的 Ubuntu 測試在 POSIX 管線上被 `process.exit()` 截掉未寫完的輸出，看不到是哪個檔失敗（上游缺陷） |
-| `tests/ci/run-all.test.js` | 配合上一列：契約測試原本攔截 `process.exit()` 讀結束碼，改為也讀 `process.exitCode`（斷言的值不變），並新增一條釘住「最後一行是設定 exitCode」 |
-| `tests/scripts/codex-hooks.test.js` | fork 修正（上游缺陷）：「大小寫折疊」案例用 `__filename` 轉大寫或小寫後是否存在來判斷檔案系統不分大小寫；本 fork 的 repo 名稱全小寫，轉小寫後就是原檔，在 Linux 上誤判並執行而失敗（PR CI 的 Ubuntu 紅燈根因）。改為只用與原路徑不同的拼法判斷 |
-| `tools/test_fork_overlay.py` | 上游新增 `.github/workflows/taste-skills.yml`（只跑離線單元測試，`contents: read`、不發佈），歸入可在 fork 執行的 `UNGATED_WORKFLOWS` |
+| `package.json`、`package-lock.json`、`yarn.lock`、`docs/COMMAND-REGISTRY.json` | 採上游；註冊表以 `npm run command-registry:write` 重產（反映 fork 的 `pr.md` 描述） |
+
+**合併後的 fork 修正**（非衝突，合併後驗證或 PR CI 發現）：
+
+| 檔案 | 修正 |
+| --- | --- |
 | `tests/ci/validators.test.js` | fork 自加的兩個 matcher 測試補上 `id`：上游新規定物件格式的 hooks.json 每組 matcher 必須有穩定 `id`，否則測試資料先被 id 規則擋下 |
+| `tools/test_fork_overlay.py` | 上游新增 `.github/workflows/taste-skills.yml`（只跑離線單元測試，`contents: read`、不發佈），歸入可在 fork 執行的 `UNGATED_WORKFLOWS` |
+| `pi/core/commands/pr.md` | 以 `node scripts/build-pi-core.js` 重產，反映 fork 的 `pr.md` 描述。`pi/core/` 是上游新增的衍生檔，第一版漏了，PR CI 的 Pi Core Profile 因此失敗 |
+| `tests/run-all.js` | 上游缺陷：結尾 `process.exit()` 在 POSIX 管線上會丟掉未寫完的輸出。CI run 37455773240（`55bfdd8b`）的 Ubuntu job 112242882787 日誌停在 `block-no-verify` 輸出的半行就 `exit code 1`，看不到失敗檔。改為設定 `process.exitCode` 並在最後列出失敗檔名；找不到測試檔的早期 `process.exit(1)` 不變 |
+| `tests/ci/run-all.test.js` | 配合上一列：契約測試原本攔截 `process.exit()` 讀結束碼，改為攔截不到時讀 `process.exitCode`（斷言的值不變），並新增一條釘住「最後一行是設定 exitCode」 |
+| `tests/scripts/codex-hooks.test.js` | 上游缺陷，Ubuntu 紅燈的根因：「大小寫折疊」案例用 `__filename` 轉大寫或小寫後是否存在來判斷檔案系統不分大小寫；本 fork 的 CI 路徑 `/home/runner/work/everything-claude-code/...` 全小寫，轉小寫就是原檔，Linux 上誤判並執行而失敗（run 37472728926 的 Ubuntu job 112300266161）。改為只用與原路徑不同的拼法判斷；macOS、Windows 照跑 |
 
-**驗證**（每個測試檔獨立程序、每檔 180 秒上限，逾時者單獨以 600 秒重跑；合併後 325 檔，`main` 248 檔）：
+**驗證**
 
-- 兩邊都有的檔：合併後才失敗的只有 `tests/ci/validators.test.js`（已修，191 pass）與 `tests/scripts/codex-hooks.test.js`（新增的 symlink 案例，見下）；兩個逾時檔單獨重跑通過。
-- `main` 原本就失敗或逾時的 10 檔（`claude-plugin-setup`、`claude-scope-migration`、`codex-legacy-sync`、`memory-vault`、`state-store`、`ecc-universal-bin`、`install-apply`、`memory-mcp`、`setup`、`uninstall`）不在本次範圍，延續 2026-09-11 條的既存失敗。
-- 上游新增檔中仍失敗的 6 檔都是本機環境限制，不是合併造成：
-  - 無法建立 symlink（Windows 未開開發人員模式，`EPERM`）：`tests/lib/eval-harness/security.test.js`、`tests/lib/opencode-consent-legacy-lock.test.js`、`tests/scripts/coordination-inventory.test.js`、`tests/skills/build-agreement.test.js`、`tests/scripts/codex-hooks.test.js` 的一個案例。
+本機逐檔測試（每個測試檔獨立程序、每檔 180 秒上限，逾時者單獨以 600 秒重跑）跑在合併後、壓成 `55bfdd8b` 之前的本機 bridge 樹（2026-10-05 19:58 至 10-06 07:49；325 檔），對照 `main` `b9c6aa93`（248 檔）：
+
+- 兩邊都有的檔：合併後才失敗的只有 `tests/ci/validators.test.js`（已修，修後單獨重跑 191 pass／0 fail）與 `tests/scripts/codex-hooks.test.js`（本機只剩新增的 symlink 案例，見下）。逾時的 `tests/lib/install-executor.test.js`、`tests/scripts/repair.test.js` 單獨重跑通過（116 秒、60 秒）。
+- 上游新增檔首輪失敗、單獨重跑通過的兩檔，屬負載下的不穩定：`tests/lib/powershell-destructive-command.test.js`（hook 時間預算案例）、`tests/scripts/profile-interactive.test.js`。
+- `main` 原本就失敗或逾時的 10 檔（`claude-plugin-setup`、`claude-scope-migration`、`codex-legacy-sync`、`memory-vault`、`state-store`、`ecc-universal-bin`、`install-apply`、`memory-mcp`、`setup`、`uninstall`）：以純上游 `ef648e01` 副本在本機對照，除 `uninstall` 兩邊都通過外，其餘在上游樹同樣失敗，屬 Windows 本機環境，不是 fork 造成。
+- 上游新增檔中仍失敗的 6 檔都是本機環境限制：
+  - 無法建立 symlink（`EPERM`）：`tests/lib/eval-harness/security.test.js`、`tests/lib/opencode-consent-legacy-lock.test.js`、`tests/scripts/coordination-inventory.test.js`、`tests/skills/build-agreement.test.js`、`tests/scripts/codex-hooks.test.js` 的一個案例。
   - `tests/ci/context-profiles.test.js`：子程序上限 30 秒，本機實測 `validate-context-profiles.js --json` 成功但需 32.6 秒（repo 在 OneDrive 下）。不放寬測試。
   - `tests/scripts/eval-harness-package.test.js`：Git Bash 的 GNU tar 把 `C:` 當成遠端主機；其聚合案例連帶失敗於上一列的 symlink 案例。
-- `npm test` 前段的靜態檢查（unicode、agents、commands、rules、skills、hooks、schema 鍵、install manifests、context profiles、個人路徑、catalog、command registry）全部通過。
+- 壓成 commit 之後的修正（上表後四列）以個別測試驗證：`node tests/ci/run-all.test.js` 9 pass、`node tests/scripts/codex-hooks.test.js` 40 pass（唯一失敗為本機 symlink 案例）、`node scripts/build-pi-core.js --check` 為最新；`tools\dev_check.ps1` 綠。
+
+PR #4 CI：run 37455773240（`55bfdd8b`）Ubuntu 12 個 Test、Coverage、Pi Core Profile 失敗；run 37472728926（`daacacd0`）三平台的 `ci/run-all.test.js` 與 Ubuntu 的 `scripts/codex-hooks.test.js` 失敗；run 37544105599（`dc582031`）50 項全部通過。這些失敗正是本機 Windows 無法重現、只有 PR CI 才抓得到的部分；symlink 類安全測試由 CI 的 Linux／macOS 執行。
+
+**CodeQL**：PR 帶入的上游程式碼新增 12 個高嚴重度警示（#197–#208），2026-10-07 依維護者授權附理由關閉：測試與 fixture 6 個（#199–#201、#206–#208）標 used in tests；`scripts/build-pi-core.js` 2 個（#197、#198，輸入為 repo 自己的 manifest）、`scripts/lib/context-pack-registry.js`（#205）、`scripts/ci/validate-hooks.js`（#203）、`scripts/lib/claude-dry-run-sandbox.js`（#204，讀使用者自己的 Claude 設定複製進 dry-run 沙箱，競態需要已能替換使用者設定檔）標 won't fix；`docker/context-profiles/run-sandbox.js`（#202，讀檔前後已比對 dev／ino／size）標 false positive。
 
 **PR／issue 軸**：本輪只採用 commit；PR #3279 起、issue #3280 起未逐筆審，水位不推進。
