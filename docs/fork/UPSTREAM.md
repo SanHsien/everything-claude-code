@@ -66,3 +66,8 @@ Fork `50b19e47194d`；upstream `005eff40fd4a4ac005da7a70e713459175385516`。`5ed
 `5eddf1a..c70874f` 共 556 commits、PR #2907–#3278、issue #2909–#3279 已分組判定，全部 adoption pending 或
 follow-upstream，未採用任何 commit。`origin/main` 已於 2026-09-27 壓成單一 root commit，與上游無共同祖先，
 無法 merge。分組結論與下輪切片見 [`DECISIONS.md`](DECISIONS.md) 同日條目。
+
+## 2026-10-06：整棵採用 `ef648e0`（2.2.3）
+
+`5eddf1a..ef648e01` 共 559 commits 以三方合併算出結果樹（暫時 bridge 只在本機），壓成 `main` 上的單一 commit。
+衝突解法、測試對照與環境限制見 [`DECISIONS.md`](DECISIONS.md) 同日條目。PR／issue 軸本輪未推進（仍為 #3278／#3279）。

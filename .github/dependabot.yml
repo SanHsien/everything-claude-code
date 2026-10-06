@@ -49,6 +49,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    versioning-strategy: "increase-if-necessary"
     labels:
       - "dependencies"
       - "python"
@@ -69,6 +70,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    versioning-strategy: "increase-if-necessary"
     labels:
       - "dependencies"
       - "python"

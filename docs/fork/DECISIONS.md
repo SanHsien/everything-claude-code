@@ -229,3 +229,33 @@ Components、Security Scan、Coverage、Lint。這是 `main` 自 2026-08-27 以�
 
 - commit：`c70874fae9eb0e5ad0365beb7e2955899fd1d30f`
 - PR：#3278；issue：#3279
+
+## 2026-10-06：整棵採用上游 `ef648e01`（2.2.3）
+
+**決定**：採用 `5eddf1a..ef648e01` 共 559 個上游 commit（含 2026-09-30 列為 adoption pending 的全部分組），以整棵樹方式進 `main`，壓成單一 commit；上游歷史不帶回 `main`。觸發條件由維護者 2026-10-02 指示「上游待採用全部處理」成立。
+
+**做法**：本機暫時分支先 `git merge -s ours --allow-unrelated-histories 5eddf1a`（不改樹，只給三方合併一個 base；`5eddf1a` 是本 fork 2026-09-27 壓縮前最後同步到的上游點，根樹與它只差 48 個 fork 檔），再 `git merge upstream/main`。暫時分支不推送。
+
+**衝突與取捨**（9 個衝突檔，fork 改過的 48 檔中有 25 檔上游也動過）：
+
+| 檔案 | 解法 |
+| --- | --- |
+| `AGENTS.md` | 保留 fork 開頭的維護區塊，其餘採上游（skill 數 286 → 293） |
+| `hooks/hooks.json`、`hooks/codex-hooks.json`、`tests/hooks/hooks.test.js`、`tests/hooks/posttooluse-dispatcher.test.js` | 採上游。fork 2026-08-30 把無效 regex `"*"` 改成 `".*"`，上游已做同樣修正，另把 MCP 健康檢查限縮為 `"^mcp__"`（#2838） |
+| `commands/prp-pr.md` | 採上游。fork 為了和 `pr` 描述不同而改寫，上游已改成「`/pr` 的別名」，同樣解決重複；`commands/pr.md` 保留 fork 版描述 |
+| `install.ps1`、`install.sh` | 採上游。fork 加的 `npm install --ignore-scripts` 上游已採用 |
+| `package.json`、`package-lock.json`、`yarn.lock`、`docs/COMMAND-REGISTRY.json` | 採上游；註冊表以 `npm run command-registry:write` 重產（反映 fork 的 `pr.md` 描述） |
+| `tools/test_fork_overlay.py` | 上游新增 `.github/workflows/taste-skills.yml`（只跑離線單元測試，`contents: read`、不發佈），歸入可在 fork 執行的 `UNGATED_WORKFLOWS` |
+| `tests/ci/validators.test.js` | fork 自加的兩個 matcher 測試補上 `id`：上游新規定物件格式的 hooks.json 每組 matcher 必須有穩定 `id`，否則測試資料先被 id 規則擋下 |
+
+**驗證**（每個測試檔獨立程序、每檔 180 秒上限，逾時者單獨以 600 秒重跑；合併後 325 檔，`main` 248 檔）：
+
+- 兩邊都有的檔：合併後才失敗的只有 `tests/ci/validators.test.js`（已修，191 pass）與 `tests/scripts/codex-hooks.test.js`（新增的 symlink 案例，見下）；兩個逾時檔單獨重跑通過。
+- `main` 原本就失敗或逾時的 10 檔（`claude-plugin-setup`、`claude-scope-migration`、`codex-legacy-sync`、`memory-vault`、`state-store`、`ecc-universal-bin`、`install-apply`、`memory-mcp`、`setup`、`uninstall`）不在本次範圍，延續 2026-09-11 條的既存失敗。
+- 上游新增檔中仍失敗的 6 檔都是本機環境限制，不是合併造成：
+  - 無法建立 symlink（Windows 未開開發人員模式，`EPERM`）：`tests/lib/eval-harness/security.test.js`、`tests/lib/opencode-consent-legacy-lock.test.js`、`tests/scripts/coordination-inventory.test.js`、`tests/skills/build-agreement.test.js`、`tests/scripts/codex-hooks.test.js` 的一個案例。
+  - `tests/ci/context-profiles.test.js`：子程序上限 30 秒，本機實測 `validate-context-profiles.js --json` 成功但需 32.6 秒（repo 在 OneDrive 下）。不放寬測試。
+  - `tests/scripts/eval-harness-package.test.js`：Git Bash 的 GNU tar 把 `C:` 當成遠端主機；其聚合案例連帶失敗於上一列的 symlink 案例。
+- `npm test` 前段的靜態檢查（unicode、agents、commands、rules、skills、hooks、schema 鍵、install manifests、context profiles、個人路徑、catalog、command registry）全部通過。
+
+**PR／issue 軸**：本輪只採用 commit；PR #3279 起、issue #3280 起未逐筆審，水位不推進。
