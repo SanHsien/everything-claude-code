@@ -31,6 +31,8 @@ UNGATED_WORKFLOWS = (
     "reusable-validate.yml",
     "fork-maintenance.yml",
     "upstream-check.yml",
+    # Read-only offline tests for the taste skills (contents: read, no publish).
+    "taste-skills.yml",
 )
 
 

@@ -1,4 +1,4 @@
-# Contributing to Everything Claude Code
+# Contributing to ECC
 
 > **SanHsien 維護型 fork。** 本線的 PR 打到 [`SanHsien/everything-claude-code`](https://github.com/SanHsien/everything-claude-code)。產品行為（skills、agents、commands、hooks）的貢獻請去上游 [`affaan-m/ECC`](https://github.com/affaan-m/ECC)。維護規則見 [`FORK.md`](FORK.md)。
 >
@@ -22,6 +22,7 @@ Thanks for wanting to contribute! This repo is a community resource for Claude C
 - [MCP and documentation (e.g. Context7)](#mcp-and-documentation-eg-context7)
 - [Cross-Harness and Translations](#cross-harness-and-translations)
 - [Pull Request Process](#pull-request-process)
+- [Releases](#releases)
 
 ---
 
@@ -489,6 +490,27 @@ Run `npm test` locally. It is the same gauntlet CI runs, and it catches almost e
 1. Maintainers review within 48 hours
 2. Address feedback if requested
 3. Once approved, merged to main
+
+---
+
+## Releases
+
+Releases are cut on a regular cadence, roughly every two weeks, plus out-of-band
+patches for security or data-loss fixes.
+
+1. Sync the version everywhere: `VERSION`, `package.json`, and (via
+   `node scripts/build-pi-core.js`) `pi/core/package.json`.
+2. Update `CHANGELOG.md` and write reviewed release notes at
+   `docs/releases/<version>/release-notes.md` (required by the release workflow).
+3. Tag `vX.Y.Z` on `main` and push the tag. The `release.yml` workflow verifies
+   the tag is exactly on `origin/main`, checks the VERSION/pi/core sync, tests
+   the exact packed artifact on Linux, macOS, and Windows, publishes to npm with
+   provenance, verifies registry bytes, and creates the GitHub Release from the
+   reviewed notes.
+
+Tags and GitHub Releases are immutable once published: downstream packagers poll
+`/releases`, download `archive/refs/tags/vX.Y.Z.tar.gz`, and pin its sha256.
+Never move or re-tag a published version; ship a new patch version instead.
 
 ---
 

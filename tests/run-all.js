@@ -43,13 +43,28 @@ function discoverTestFiles() {
     .sort();
 }
 
+function escapeAnnotation(value, property = false) {
+  const escaped = value.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  return property ? escaped.replace(/:/g, '%3A').replace(/,/g, '%2C') : escaped;
+}
+
+function annotateFailure(displayPath, reason, output) {
+  if (process.env.GITHUB_ACTIONS !== 'true') return;
+  const context = output.split(/\r?\n/)
+    .filter(line => /^\s*(?:FAIL\b|not ok\b|[A-Za-z]*Error\b|[\u2717\u274c])/i.test(line))
+    .slice(0, 3)
+    .join('\n');
+  const message = [reason, context].filter(Boolean).join(': ').slice(0, 1000);
+  console.log(`::error file=${escapeAnnotation(`tests/${displayPath}`, true)}::${escapeAnnotation(message)}`);
+}
+
 const testFiles = discoverTestFiles();
 
 const BOX_W = 58; // inner width between ║ delimiters
 const boxLine = s => `║${s.padEnd(BOX_W)}║`;
 
 console.log('╔' + '═'.repeat(BOX_W) + '╗');
-console.log(boxLine('           Everything Claude Code - Test Suite'));
+console.log(boxLine('           ECC - Test Suite'));
 console.log('╚' + '═'.repeat(BOX_W) + '╝');
 console.log();
 
@@ -61,6 +76,7 @@ if (testFiles.length === 0) {
 let totalPassed = 0;
 let totalFailed = 0;
 let totalTests = 0;
+const failedFiles = [];
 
 for (const testFile of testFiles) {
   const testPath = path.join(testsDir, testFile);
@@ -96,22 +112,30 @@ for (const testFile of testFiles) {
   if (stderr) console.log(stderr);
 
   // Parse results from combined output
-  const combined = stdout + stderr;
+  const combined = `${stdout}\n${stderr}`;
   const passedMatch = combined.match(/Passed:\s*(\d+)/);
   const failedMatch = combined.match(/Failed:\s*(\d+)/);
 
   if (passedMatch) totalPassed += parseInt(passedMatch[1], 10);
-  if (failedMatch) totalFailed += parseInt(failedMatch[1], 10);
+  const reportedFailures = failedMatch ? parseInt(failedMatch[1], 10) : 0;
+  const processFailed = Boolean(result.error) || result.status !== 0;
+  totalFailed += processFailed ? Math.max(reportedFailures, 1) : reportedFailures;
 
+  let failureReason;
   if (result.error) {
-    console.log(`✗ ${displayPath} failed to start: ${result.error.message}`);
-    totalFailed += failedMatch ? 0 : 1;
-    continue;
+    failureReason = `failed to start: ${result.error.message}`;
+  } else if (result.status !== 0) {
+    failureReason = result.signal
+      ? `terminated by signal ${result.signal}`
+      : `exited with status ${result.status}`;
+  } else if (reportedFailures > 0) {
+    failureReason = `reported ${reportedFailures} failed tests`;
   }
 
-  if (result.status !== 0) {
-    console.log(`✗ ${displayPath} exited with status ${result.status}`);
-    totalFailed += failedMatch ? 0 : 1;
+  if (failureReason) {
+    failedFiles.push(`${displayPath} (${failureReason})`);
+    console.log(`✗ ${displayPath} ${failureReason}`);
+    annotateFailure(displayPath, failureReason, combined);
   }
 }
 
@@ -124,5 +148,12 @@ console.log(boxLine(`  Total Tests: ${String(totalTests).padStart(4)}`));
 console.log(boxLine(`  Passed:      ${String(totalPassed).padStart(4)}  ✓`));
 console.log(boxLine(`  Failed:      ${String(totalFailed).padStart(4)}  ${totalFailed > 0 ? '✗' : ' '}`));
 console.log('╚' + '═'.repeat(BOX_W) + '╝');
+if (failedFiles.length > 0) {
+  console.log('\nFailed test files:');
+  for (const entry of failedFiles) console.log(`  ✗ ${entry}`);
+}
 
-process.exit(totalFailed > 0 ? 1 : 0);
+// Set the exit code instead of calling process.exit(): on a POSIX pipe,
+// process.exit() can drop stdout that has not been flushed yet, which hid
+// every failure line in CI (fork fix, 2026-10-06).
+process.exitCode = totalFailed > 0 ? 1 : 0;
