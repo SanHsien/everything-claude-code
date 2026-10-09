@@ -5,6 +5,17 @@
 [`affaan-m/ECC`](https://github.com/affaan-m/ECC)
 的產品演進見其自身 [`CHANGELOG.md`](../../CHANGELOG.md) 與 [`docs/fork/UPSTREAM.md`](UPSTREAM.md) 的審查清冊。
 
+## 2026-10-10
+
+### 安全
+
+- 透過 `package.json` overrides 與 resolutions 升級並修復 5 個依賴漏洞，同步更新 `package-lock.json` 與 `yarn.lock`，關閉 9 個 Dependabot alerts：
+  - `fast-uri` 升至 3.1.8（修復 GHSA-hrr3-gc8f-f4qj）
+  - `markdown-it` 升至 14.3.1（修復 GHSA-253c-mchw-3w2r）
+  - `smol-toml` 升至 1.9.1（修復 GHSA-r4xh-jqrq-34v2）
+  - `katex` 升至 0.18.2（修復 GHSA-238p-pmpm-9mq7）
+  - `brace-expansion` 升至 5.0.12（修復 GHSA-q2hr-2g5m-vwhr）
+
 ## 2026-08-27
 
 ### 新增

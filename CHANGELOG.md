@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.4 - 2026-10-10
+
+### Security
+
+- Patch 5 dependencies across `package-lock.json` and `yarn.lock` via `overrides` and `resolutions`:
+  - `fast-uri` to 3.1.8 (GHSA-hrr3-gc8f-f4qj)
+  - `markdown-it` to 14.3.1 (GHSA-253c-mchw-3w2r)
+  - `smol-toml` to 1.9.1 (GHSA-r4xh-jqrq-34v2)
+  - `katex` to 0.18.2 (GHSA-238p-pmpm-9mq7)
+  - `brace-expansion` to 5.0.12 (GHSA-q2hr-2g5m-vwhr)
+
 ## 2.2.3 - 2026-10-01
 
 ### Changed
