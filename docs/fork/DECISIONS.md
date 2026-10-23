@@ -276,3 +276,11 @@ PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，�
 **CodeQL**：PR 帶入的上游程式碼新增 12 個高嚴重度警示（#197–#208），2026-10-06 21:37（+0800）依維護者授權附理由關閉（#204 的理由寫錯，10-07 07:33 重新開啟後以正確理由再關閉）：測試與 fixture 6 個（#199–#201、#206–#208）標 used in tests；`scripts/build-pi-core.js` 2 個（#197、#198，輸入為 repo 自己的 manifest）、`scripts/lib/context-pack-registry.js`（#205）、`scripts/ci/validate-hooks.js`（#203）、`scripts/lib/claude-dry-run-sandbox.js`（#204，讀使用者自己的 Claude 設定複製進 dry-run 沙箱，競態需要已能替換使用者設定檔）標 won't fix；`docker/context-profiles/run-sandbox.js`（#202，讀檔前後已比對 dev／ino／size）標 false positive。
 
 **PR／issue 軸**：本輪只採用 commit；PR #3279 起、issue #3280 起未逐筆審，水位不推進。
+
+## 2026-10-24：`markdown-it` override 由 14.3.1 升到 14.3.3
+
+**決定**：`package.json` 的 `overrides` 與 `resolutions` 把 `markdown-it` 由 `14.3.1` 改為 `14.3.3`，`package-lock.json` 與 `yarn.lock` 用各自工具重產（`npm install --ignore-scripts`、yarn 4.9.2 `install --mode=skip-build`）。關閉 Dependabot 高嚴重度警示 #37（package-lock.json）與 #38（yarn.lock）。
+
+**理由**：兩處 override 原本釘死精確版本 14.3.1，Dependabot 的 security update 因此在 10-07、10-23 兩次都以 `security_update_not_possible` 失敗（可解析的最新版 14.3.1，最低安全版 14.3.3）。唯一的上游父套件 `markdownlint-cli@0.49.1` 要求 `~14.3.0`，本來就允許 14.3.3，所以只需改 override，不必升父套件。
+
+**移除條件**：`markdownlint-cli` 的範圍不再需要 override 才能取得 >=14.3.3 時（例如父套件自己的依賴下限已 >=14.3.3），即可刪除這兩條 `markdown-it` 項目。yarn 重產時順帶補上 5 個既有條目缺的 `checksum` 欄位，內容由 yarn 計算，未手改。
