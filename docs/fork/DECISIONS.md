@@ -284,3 +284,11 @@ PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，�
 **理由**：兩處 override 原本釘死精確版本 14.3.1，Dependabot 的 security update 因此在 10-07、10-23 兩次都以 `security_update_not_possible` 失敗（可解析的最新版 14.3.1，最低安全版 14.3.3）。唯一的上游父套件 `markdownlint-cli@0.49.1` 要求 `~14.3.0`，本來就允許 14.3.3，所以只需改 override，不必升父套件。
 
 **移除條件**：`markdownlint-cli` 的範圍不再需要 override 才能取得 >=14.3.3 時（例如父套件自己的依賴下限已 >=14.3.3），即可刪除這兩條 `markdown-it` 項目。yarn 重產時順帶補上 5 個既有條目缺的 `checksum` 欄位，內容由 yarn 計算，未手改。
+
+## 2026-10-24：新增 `toml` override 5.0.1
+
+**決定**：`package.json` 的 `overrides` 與 `resolutions` 新增 `toml: 5.0.1`，`package-lock.json` 與 `yarn.lock` 用各自工具重產（`npm install --ignore-scripts`、yarn 4.9.2 `install --mode=skip-build`）。關閉 Dependabot 高嚴重度警示 #43、#44（package-lock.json）與 #47、#48（yarn.lock）；受影響範圍 `<= 5.0.0`，最低安全版 5.0.1。
+
+**理由**：`toml` 只由 devDependency 的 `effect@4.0.0-beta.83` 以 `^4.1.1` 引入，該範圍不含 5.x，Dependabot 無法在不動 override 的情況下升級。lock 差異只有 `toml` 一個條目（4.3.0 到 5.0.1），來源皆為 registry.npmjs.org。專案自身的 TOML 解析用 `@iarna/toml`，與此套件無關。
+
+**移除條件**：`effect` 的 `toml` 範圍放寬到涵蓋 >=5.0.1 時，刪除這兩條 `toml` 項目。
