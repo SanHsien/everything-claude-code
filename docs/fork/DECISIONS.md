@@ -292,3 +292,9 @@ PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，�
 **理由**：`toml` 只由 devDependency 的 `effect@4.0.0-beta.83` 以 `^4.1.1` 引入，該範圍不含 5.x，Dependabot 無法在不動 override 的情況下升級。lock 差異只有 `toml` 一個條目（4.3.0 到 5.0.1），來源皆為 registry.npmjs.org。專案自身的 TOML 解析用 `@iarna/toml`，與此套件無關。
 
 **移除條件**：`effect` 的 `toml` 範圍放寬到涵蓋 >=5.0.1 時，刪除這兩條 `toml` 項目。
+
+## 2026-10-24：`fast-uri` override 升到 3.1.9
+
+**決定**：`package.json` 的 `overrides` 與 `resolutions` 把 `fast-uri` 從 `3.1.8` 升到 `3.1.9`，`package-lock.json` 與 `yarn.lock` 用各自工具重產（`npm install --package-lock-only --ignore-scripts`、yarn 4.9.2 `install --mode=update-lockfile`）。對應 Dependabot 警示 #50–#57（package-lock.json 與 yarn.lock 各 4 個），修補版 3.1.9。
+
+**理由**：`fast-uri` 只經 `ajv` 引入，先前為了高嚴重度公告釘在 3.1.8，之後又出新公告，最低安全版變成 3.1.9。lock 差異只有 `fast-uri` 一個條目，來源皆為 registry.npmjs.org。
