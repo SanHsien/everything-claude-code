@@ -321,6 +321,6 @@ PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，�
 
 **合併後的 fork 修正**：上游新增 `.github/workflows/pr-burst-guard.yml`（`pull_request_target`，會對他人 PR 留言、關閉並封鎖作者）。本 fork 不該對外部貢獻者執行，job 加 `github.repository == 'affaan-m/ECC'` 守衛，並在 `tools/test_fork_overlay.py` 的 `GATED_WORKFLOWS` 登記。`docs/COMMAND-REGISTRY.json`、`pi/core/` 重產後無差異。
 
-**PR／issue 軸**：PR #3279–#3711（204 筆：75 merged、20 closed、109 open）與 issue #3280–#3720（84 筆）逐筆掃過標題。已合併的隨 commit 進來；**未提前引用任何 open PR／open issue**，判準同 `FORK.md`（本 fork 現在就在痛才引）。列入觀察、觸發條件為「本 fork 的 hook 在實際使用時出現同症狀」：#3665／#3669（hook 讀 stdin 無逾時）、#3663（hook 讀 `tool_response`）、#3600／#3601（無 `xdg-open` 的 Linux 儀表板崩潰）、#3459（Windows 上 `observe.sh` 鎖殘留）。OpenCode v2 系列（#3617、#3635、#3660、#3676）本 fork 不用 OpenCode，略過。
+**PR／issue 軸**：PR #3279–#3711（204 筆：75 merged、20 closed、109 open）與 issue #3280–#3721（85 筆）逐筆掃過標題。已合併的隨 commit 進來；**未提前引用任何 open PR／open issue**，判準同 `FORK.md`（本 fork 現在就在痛才引）。列入觀察、觸發條件為「本 fork 的 hook 在實際使用時出現同症狀」：#3665／#3669（hook 讀 stdin 無逾時）、#3663（hook 讀 `tool_response`）、#3600／#3601（無 `xdg-open` 的 Linux 儀表板崩潰）、#3459（Windows 上 `observe.sh` 鎖殘留）。issue #3721（要求補一個「測試時限 vs 執行期需求」的驗證範例）是文件建議，與本 fork 驗證項目無關，略過。OpenCode v2 系列（#3617、#3635、#3660、#3676）本 fork 不用 OpenCode，略過。
 
-**水位**：commit `90606c8315ee09cafc303515c5f33024db6b9882`、PR #3711、issue #3720、日期 2026-10-25。
+**水位**：commit `90606c8315ee09cafc303515c5f33024db6b9882`、PR #3711、issue #3721、日期 2026-10-25。

@@ -74,5 +74,5 @@ follow-upstream，未採用任何 commit。`origin/main` 已於 2026-09-27 壓�
 
 ## 2026-10-25：整棵採用 `90606c8`（2.2.3 之後）
 
-`ef648e01..90606c83` 共 914 commits 以三方合併算出結果樹，壓成 `main` 上的單一 commit；水位推進到 `90606c83`，PR #3711、issue #3720。
+`ef648e01..90606c83` 共 914 commits 以三方合併算出結果樹，壓成 `main` 上的單一 commit；水位推進到 `90606c83`，PR #3711、issue #3721。
 衝突解法、掃描結果與觀察中的 open PR 見 [`DECISIONS.md`](DECISIONS.md) 同日條目。
