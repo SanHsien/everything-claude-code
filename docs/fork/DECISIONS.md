@@ -298,3 +298,29 @@ PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，�
 **決定**：`package.json` 的 `overrides` 與 `resolutions` 把 `fast-uri` 從 `3.1.8` 升到 `3.1.9`，`package-lock.json` 與 `yarn.lock` 用各自工具重產（`npm install --package-lock-only --ignore-scripts`、yarn 4.9.2 `install --mode=update-lockfile`）。對應 Dependabot 警示 #50–#57（package-lock.json 與 yarn.lock 各 4 個），修補版 3.1.9。
 
 **理由**：`fast-uri` 只經 `ajv` 引入，先前為了高嚴重度公告釘在 3.1.8，之後又出新公告，最低安全版變成 3.1.9。lock 差異只有 `fast-uri` 一個條目，來源皆為 registry.npmjs.org。
+
+## 2026-10-25：整棵採用上游 `90606c83`（ef648e01 之後 914 commits）
+
+**決定**：採用 `ef648e01..90606c83` 共 914 個上游 commit（815 檔、約 +10 萬／−7 千行），水位推進到 **`90606c8315ee09cafc303515c5f33024db6b9882`**。方式同 10-06：本機暫時分支先 `git merge -s ours --allow-unrelated-histories ef648e01` 給三方合併一個 base，再 `git merge upstream/main`；暫時分支不推送，結果以單一 commit 進 `main`（`origin/main` 為 2026-09-27 起的 root commit，與上游無共同祖先）。
+
+**合併前掃描**：對 `ef648e01..upstream/main` 的新增行找藏起來的內容（超長單行、`eval`／`new Function(`、`global.require`、長 base64／hex）。超過 1500 字元的行只有 `hooks/hooks.json` 與 `hooks/codex-hooks.json` 的 `node -e` 外掛根目錄解析器（與既有 24 條同一個樣板，新增 3 條）和三份文件；`eval` 只出現在測試資料與 `String.fromCharCode` 解 tar 標頭。無命中。
+
+**衝突與取捨**（11 個）：
+
+| 檔案 | 解法 |
+| --- | --- |
+| `CLAUDE.md` | fork 已刪除（repo 只用 `AGENTS.md`），上游改動不採 |
+| `AGENTS.md` | 保留 fork 開頭維護區塊，其餘採上游（71 agents／311 skills／97 commands） |
+| `README.md` | 語言列保留 fork 的繁中連結並加入上游新增的阿拉伯文連結 |
+| `CHANGELOG.md` | 上游 `Unreleased` 在前，fork 的 `2.2.4` 安全條目在後 |
+| `package.json` | `overrides`／`resolutions` 保留 fork 較新的釘版（fast-uri 3.1.9、markdown-it 14.3.3、toml 5.0.1），其餘採上游 |
+| `package-lock.json`、`yarn.lock` | 取上游版後用 `npm install --package-lock-only --ignore-scripts`、yarn 4.9.2 `install --mode=update-lockfile` 重產 |
+| `tests/run-all.js`、`tests/ci/run-all.test.js` | 採上游：上游已改為設定 `process.exitCode`（10-06 fork 修正同一缺陷），並新增工作池與 `ECC_TEST_ONLY` |
+| `scripts/ci/validate-hooks.js` | 採上游（拆成各形狀驗證器），再把 fork 的 matcher 正規式編譯檢查（含 `*`／`""` match-all 特判）補進新的 `validateObjectMatcher`——上游重構時整段拿掉了，`tests/ci/validators.test.js` 的「matcher is not a valid regular expression」案例因此紅，補回後 194 pass／0 fail |
+| `tests/scripts/codex-hooks.test.js` | 保留 fork 修正：大小寫折疊案例只用與 `__filename` 不同的拼法判斷（上游仍有 Linux 全小寫路徑誤判） |
+
+**合併後的 fork 修正**：上游新增 `.github/workflows/pr-burst-guard.yml`（`pull_request_target`，會對他人 PR 留言、關閉並封鎖作者）。本 fork 不該對外部貢獻者執行，job 加 `github.repository == 'affaan-m/ECC'` 守衛，並在 `tools/test_fork_overlay.py` 的 `GATED_WORKFLOWS` 登記。`docs/COMMAND-REGISTRY.json`、`pi/core/` 重產後無差異。
+
+**PR／issue 軸**：PR #3279–#3711（204 筆：75 merged、20 closed、109 open）與 issue #3280–#3720（84 筆）逐筆掃過標題。已合併的隨 commit 進來；**未提前引用任何 open PR／open issue**，判準同 `FORK.md`（本 fork 現在就在痛才引）。列入觀察、觸發條件為「本 fork 的 hook 在實際使用時出現同症狀」：#3665／#3669（hook 讀 stdin 無逾時）、#3663（hook 讀 `tool_response`）、#3600／#3601（無 `xdg-open` 的 Linux 儀表板崩潰）、#3459（Windows 上 `observe.sh` 鎖殘留）。OpenCode v2 系列（#3617、#3635、#3660、#3676）本 fork 不用 OpenCode，略過。
+
+**水位**：commit `90606c8315ee09cafc303515c5f33024db6b9882`、PR #3711、issue #3720、日期 2026-10-25。

@@ -5,6 +5,10 @@
 [`affaan-m/ECC`](https://github.com/affaan-m/ECC)
 的產品演進見其自身 [`CHANGELOG.md`](../../CHANGELOG.md) 與 [`docs/fork/UPSTREAM.md`](UPSTREAM.md) 的審查清冊。
 
+## 2026-10-25
+
+- 採用上游 `90606c83`（914 commits）；`pr-burst-guard.yml` 只在官方 repo 執行。
+
 ## 2026-10-10
 
 ### 安全

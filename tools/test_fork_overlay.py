@@ -23,6 +23,8 @@ GATED_WORKFLOWS = (
     "maintenance.yml",
     "supply-chain-watch.yml",
     "generator-generic-ossf-slsa3-publish.yml",
+    # Closes and blocks other contributors' PRs; official repository only.
+    "pr-burst-guard.yml",
 )
 UNGATED_WORKFLOWS = (
     "ci.yml",

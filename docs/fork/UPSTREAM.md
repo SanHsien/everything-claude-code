@@ -71,3 +71,8 @@ follow-upstream，未採用任何 commit。`origin/main` 已於 2026-09-27 壓�
 
 `5eddf1a..ef648e01` 共 559 commits 以三方合併算出結果樹（暫時 bridge 只在本機），壓成 `main` 上的單一 commit。
 衝突解法、測試對照與環境限制見 [`DECISIONS.md`](DECISIONS.md) 同日條目。PR／issue 軸本輪未推進（仍為 #3278／#3279）。
+
+## 2026-10-25：整棵採用 `90606c8`（2.2.3 之後）
+
+`ef648e01..90606c83` 共 914 commits 以三方合併算出結果樹，壓成 `main` 上的單一 commit；水位推進到 `90606c83`，PR #3711、issue #3720。
+衝突解法、掃描結果與觀察中的 open PR 見 [`DECISIONS.md`](DECISIONS.md) 同日條目。

@@ -13,6 +13,7 @@ const {
   listInstallTargetAdapters,
   planInstallTargetScaffold,
 } = require('../../scripts/lib/install-targets/registry');
+const { isForeignPlatformPath } = require('../../scripts/lib/install-targets/helpers');
 const { resolveInvocationEnvironment } = require('../../scripts/lib/invocation-environment');
 
 function normalizedRelativePath(value) {
@@ -231,9 +232,11 @@ function runTests() {
       normalizedRelativePath(operation.sourceRelativePath) === '.cursor/rules/common-coding-style.md'
     ));
 
-    assert.ok(hooksJson, 'Should preserve non-rule Cursor platform config files');
-    assert.strictEqual(hooksJson.strategy, 'preserve-relative-path');
-    assert.strictEqual(hooksJson.destinationPath, path.join(projectRoot, '.cursor', 'hooks.json'));
+    assert.strictEqual(
+      hooksJson,
+      undefined,
+      'Platform configs should not register hooks without hooks-runtime'
+    );
     assert.ok(mcpJson, 'Should materialize a Cursor MCP config from the shared root MCP config');
     assert.strictEqual(mcpJson.kind, 'merge-json');
     assert.strictEqual(mcpJson.strategy, 'merge-json');
@@ -395,11 +398,10 @@ function runTests() {
       'Should not preserve .md Cursor platform rule files'
     );
     assert.ok(
-      plan.operations.some(operation => (
-        normalizedRelativePath(operation.sourceRelativePath) === '.cursor/hooks.json'
-        && operation.destinationPath === path.join(projectRoot, '.cursor', 'hooks.json')
+      !plan.operations.some(operation => (
+        operation.destinationPath === path.join(projectRoot, '.cursor', 'hooks.json')
       )),
-      'Should preserve non-rule Cursor platform config files'
+      'Should not register Cursor hooks without hooks-runtime'
     );
     assert.ok(
       plan.operations.some(operation => (
@@ -478,6 +480,14 @@ function runTests() {
       normalizedRelativePath(hooksDestinations[0].sourceRelativePath),
       '.cursor/hooks',
       'Should prefer native Cursor hooks over generic hooks-runtime hooks'
+    );
+    const hooksConfig = plan.operations.find(operation => (
+      operation.destinationPath === path.join(projectRoot, '.cursor', 'hooks.json')
+    ));
+    assert.strictEqual(
+      normalizedRelativePath(hooksConfig.sourceRelativePath),
+      '.cursor/hooks.json',
+      'Should register the native Cursor hook config through hooks-runtime'
     );
   })) passed++; else failed++;
 
@@ -1241,6 +1251,50 @@ function runTests() {
       )),
       'Should skip foreign Zed platform paths'
     );
+  })) passed++; else failed++;
+
+  if (test('opencode adapter skips the foreign Pi harness directory', () => {
+    const repoRoot = path.join(__dirname, '..', '..');
+    const homeDir = path.join(os.tmpdir(), 'ecc-opencode-pi-home');
+
+    const plan = planInstallTargetScaffold({
+      target: 'opencode',
+      repoRoot,
+      homeDir,
+      exemptValidationCodes: ['opencode-plugin-not-built'],
+      modules: [
+        {
+          id: 'platform-configs',
+          paths: ['.opencode', '.pi', 'mcp-configs'],
+        },
+      ],
+    });
+
+    assert.ok(
+      plan.operations.some(operation => (
+        normalizedRelativePath(operation.sourceRelativePath) === 'mcp-configs'
+      )),
+      'Should still include non-foreign mcp-configs path (guards against empty-plan regression)'
+    );
+    assert.ok(
+      !plan.operations.some(operation => (
+        normalizedRelativePath(operation.sourceRelativePath) === '.pi'
+        || normalizedRelativePath(operation.sourceRelativePath).startsWith('.pi/')
+      )),
+      'Should skip the Pi harness directory, which Pi consumes via `pi install`'
+    );
+  })) passed++; else failed++;
+
+  if (test('every install target treats .pi as a foreign platform path', () => {
+    for (const adapter of listInstallTargetAdapters()) {
+      for (const sourcePath of ['.pi', '.pi/extensions/index.ts', '.pi/README.md']) {
+        assert.strictEqual(
+          isForeignPlatformPath(sourcePath, adapter.target),
+          true,
+          `${adapter.target} should treat ${sourcePath} as foreign`
+        );
+      }
+    }
   })) passed++; else failed++;
 
   if (test('resolves opencode adapter root and install-state path from home dir', () => {

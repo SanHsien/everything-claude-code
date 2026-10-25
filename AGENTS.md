@@ -7,7 +7,7 @@
 > 產品行為（skills、agents、commands、hooks、安裝器）仍遵守下文上游規則。
 > 溝通使用繁體中文，直接交付可驗證結果，避免冗長背景鋪陳。
 
-This is a **production-ready AI coding plugin** providing 68 specialized agents, 293 skills, 94 commands, and automated hook workflows for software development.
+This is a **production-ready AI coding plugin** providing 71 specialized agents, 311 skills, 97 commands, and automated hook workflows for software development.
 
 **Version:** 2.2.3
 
@@ -27,6 +27,7 @@ This is a **production-ready AI coding plugin** providing 68 specialized agents,
 | architect | System design and scalability | Architectural decisions |
 | tdd-guide | Test-driven development | New features, bug fixes |
 | code-reviewer | Code quality and maintainability | After writing/modifying code |
+| bengali-reviewer | Bengali text review | Unicode, normalization, grapheme, search, and locale correctness |
 | security-reviewer | Vulnerability detection | Before commits, sensitive code |
 | spec-miner | Brownfield spec extraction | Onboarding brownfield projects to spec-driven development |
 | build-error-resolver | Fix build/type errors | When build fails |
@@ -227,9 +228,9 @@ node tests/hooks/hooks.test.js
 ## Project Structure
 
 ```
-agents/          — 68 specialized subagents
-skills/          — 293 workflow skills and domain knowledge
-commands/        — 94 slash commands
+agents/          — 71 specialized subagents
+skills/          — 311 workflow skills and domain knowledge
+commands/        — 97 slash commands
 hooks/           — Trigger-based automations
 rules/           — Always-follow guidelines (common + per-language)
 scripts/         — Cross-platform Node.js utilities
