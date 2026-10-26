@@ -25,6 +25,8 @@ GATED_WORKFLOWS = (
     "generator-generic-ossf-slsa3-publish.yml",
     # Closes and blocks other contributors' PRs; official repository only.
     "pr-burst-guard.yml",
+    # Moderates other contributors' Issues (comments, locks); official repository only.
+    "issue-submission-guard.yml",
 )
 UNGATED_WORKFLOWS = (
     "ci.yml",

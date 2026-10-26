@@ -324,3 +324,35 @@ PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，�
 **PR／issue 軸**：PR #3279–#3711（204 筆：75 merged、20 closed、109 open）與 issue #3280–#3722（86 筆）逐筆掃過標題。已合併的隨 commit 進來；**未提前引用任何 open PR／open issue**，判準同 `FORK.md`（本 fork 現在就在痛才引）。列入觀察、觸發條件為「本 fork 的 hook 在實際使用時出現同症狀」：#3665／#3669（hook 讀 stdin 無逾時）、#3663（hook 讀 `tool_response`）、#3600／#3601（無 `xdg-open` 的 Linux 儀表板崩潰）、#3459（Windows 上 `observe.sh` 鎖殘留）。issue #3721、#3722（回饋型文件建議）與本 fork 驗證項目無關，略過；#3721 要求補一個「測試時限 vs 執行期需求」的範例，是文件建議，與本 fork 驗證項目無關，略過。OpenCode v2 系列（#3617、#3635、#3660、#3676）本 fork 不用 OpenCode，略過。
 
 **水位**：commit `90606c8315ee09cafc303515c5f33024db6b9882`、PR #3711、issue #3722、日期 2026-10-25。
+
+## 2026-10-26：整棵採用上游 `25278e7d`（90606c83 之後 102 commits），並修正原生 Windows 下全部 hook 失效
+
+**決定**：採用 `90606c83..25278e7d` 共 102 個上游 commit，水位推進到 **`25278e7d7b6cf6e6a4e7a6c8e10f14ff22f0eb5b`**。方式：以 `90606c83` 當 base 做三方合併（`git merge-recursive 90606c83 -- HEAD upstream/main`），結果以單一 commit 進 `main`。
+
+**合併前掃描**：對 `90606c83..upstream/main` 的新增行找行內長串空白、超長單行、`eval`／`new Function(`／`global.require`、長 base64／hex、零寬與雙向控制字元。命中只有 `hooks/hooks.json` 27 條 hook 命令裡既有的 `String.fromCharCode(10)`（換行字元，訊息拼接），無隱藏內容。
+
+**衝突**：只有 `package.json`、`package-lock.json`、`yarn.lock`。`overrides`／`resolutions` 保留 fork 的 `markdown-it` 14.3.3、`toml` 5.0.1，並加入上游的 `zod` 4.6.7；兩個 lock 取上游版後，`package-lock.json` 用 `npm install --package-lock-only --ignore-scripts`、`yarn.lock` 用 yarn 4.9.2 `install --mode=update-lockfile` 重產（lock 與上游版只差 `markdown-it` 一個條目）。注意：npm 會把 `yarn.lock` 改寫成 yarn v1 格式，npm 之後必須還原 `yarn.lock`。
+
+**依賴警示**：上游改用 `@opencode-ai/plugin` 1.4.3 後，依賴樹不再經 `node-gyp` 引入 `undici` 6.x，`yarn.lock` 沒有任何 `undici` 條目，Dependabot #58、#59（修補版 6.29.1）隨之消失；上游對應的 undici 升級 PR（3724）也已關閉。
+
+**合併後的 fork 修正**
+
+1. **原生 Windows 下全部 hook 失效（上游 issue 3746，已重現）**：上游新增的行內解析器 WSL 片段含 `/^([A-Za-z]):[\\\\/]/` 之類的反斜線 regex。原生 Windows 以 `bash.exe -c "<command>"` 執行 hook，反斜線在 argv／MSYS／bash 雙引號三層被折疊，regex 字面值吞掉後面的程式，`[eval]:1 SyntaxError`。實測：用 Node `spawnSync` 以 Git Bash 逐條執行 `hooks/hooks.json`，合併前 27 條 0 錯誤，原樣合併後 27 條全部 SyntaxError。上游測試在 win32 一律跳過，所以沒抓到。改成語意相同、不含反斜線的寫法（`/^[A-Za-z]:/` 加字元檢查，`String.fromCharCode(92)` 換分隔符號），同步改 `scripts/lib/install-targets/helpers.js`、`scripts/lib/resolve-ecc-root.js` 的來源字串，以及由它們產生的 `hooks/hooks.json`、`hooks/codex-hooks.json` 與 5 份 `commands/*.md`，`docs/COMMAND-REGISTRY.json` 重產。新增 `tests/lib/inline-resolver-backslash-free.test.js`：斷言這些行內命令不含反斜線、WSL 轉換行為正確、並在有 bash 的平台（含 Windows）用 `bash -c` 實跑解析器；對上游版本跑為紅（6 項失敗），修正後綠。**移除條件**：上游發佈等價修正並在 Windows 上實跑後，可改回採上游版本。
+2. **新 workflow 的官方 repo 守衛**：`issue-submission-guard.yml`（會對他人 Issue 留言、鎖定）與 `maintenance.yml` 新增的 `closed-reference-audit` job 加 `github.repository == 'affaan-m/ECC'`，前者登記進 `tools/test_fork_overlay.py` 的 `GATED_WORKFLOWS`。
+
+**CodeQL 逐項判斷（11 筆，掃描基準 `0a7fc0f1`）**
+
+| # | 規則／位置 | 判斷 | 處置 |
+|---:|---|---|---|
+| 209 | `js/polynomial-redos` `scripts/ci/validate-skills.js:123` | 實務上不可利用（`.` 排除的字元都在 `\s` 內，匹配不會失敗），但 `\s*(.*)` 結構確實重疊 | 修：改為 `(.*)` 後以 `^\s+` 去除前導空白 |
+| 210、211 | `js/bad-tag-filter` `tests/scripts/dashboard-web.test.js:56,73` | 測試解析自家輸出的 HTML，非消毒；但正規式確實不處理大寫與屬性 | 修：`/<script\b[^>]*>…<\/script\s*>/gi`，71 項測試通過 |
+| 212、213、214 | `js/shell-command-injection-from-environment` `quality-gate.js:37`、`pre-bash-commit-quality.js:325`、測試 | 假陽性：`shell:false`、參數為陣列，唯一來自環境的可執行檔是 `ComSpec`（Windows 的 `.cmd` 墊片路徑），信任邊界與使用者環境相同；改成裸 `cmd.exe` 反而會讓 Windows 先搜尋 cwd | 不改產品碼；建議以假陽性關閉 |
+| 215 | `js/insecure-temporary-file` `tests/hooks/cursor-hook-dispatchers.test.js:95` | 測試 fixture 重現 hook 的暫存檔名 | 不改；建議以 used in tests 關閉 |
+| 216、217、218 | `js/file-system-race` 三處測試 | 皆已採 `open` 後 `fstat` 的 fd 檢查；測試碼 | 不改；建議以 used in tests 關閉 |
+| 219 | `js/file-access-to-http` `scripts/hooks/plan-canvas-pending.js:122` | 假陽性：目的地固定為 loopback，port 與 key 先經 `validServerPort`／`validSessionKey` 驗證 | 不改；建議以假陽性關閉 |
+
+本輪沒有代為關閉任何警示（要等推送後重掃確認 209–211 消失）。
+
+**PR／issue 軸**：PR #3723–#3744（21 筆）與 issue #3742、#3745、#3746 逐筆掃過。已合併的（3723、3732、3736 及其 commit）隨合併進來；3724 已關閉（見上）。**未提前引用任何 open PR**；觀察項：#3739（js-yaml 5.5.0，本 fork 釘 4.3.2，不跟）、#3737／#3738（依賴升級，等 Dependabot 自己的流程）、#3744（Python 3.11／Windows 的 selector 輸出可攜性，與本 fork Windows 主線相關，合併後採用）、#3741（文件稽核輸出編碼，同上）。issue 3745（`@opencode-ai/plugin` 缺 runtime 依賴）已由範圍內的上游 commit 修正；3742（Codex 外掛快取的 symlink）本 fork 不用 Codex 外掛快取，略過；3746 見上。
+
+**水位**：commit `25278e7d7b6cf6e6a4e7a6c8e10f14ff22f0eb5b`、PR #3744、issue #3746、日期 2026-10-26。

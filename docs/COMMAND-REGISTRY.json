@@ -400,7 +400,7 @@
     {
       "command": "instinct-status",
       "description": "Show learned instincts (project + global) with confidence",
-      "type": "review",
+      "type": "testing",
       "primaryAgents": [],
       "allAgents": [],
       "skills": [
@@ -957,7 +957,7 @@
     {
       "command": "sessions",
       "description": "Manage Claude Code session history, aliases, and session metadata.",
-      "type": "general",
+      "type": "testing",
       "primaryAgents": [],
       "allAgents": [],
       "skills": [],
@@ -984,7 +984,7 @@
     {
       "command": "skill-health",
       "description": "Show skill portfolio health dashboard with charts and analytics. Use for the quantitative usage/success-rate dashboard; for a qualitative compliance or quality audit use the skill-stocktake skill.",
-      "type": "review",
+      "type": "testing",
       "primaryAgents": [],
       "allAgents": [],
       "skills": [],
@@ -993,7 +993,7 @@
     {
       "command": "skill-host-compat",
       "description": "Lint ECC skills for Codex/Cursor-safe frontmatter and Claude-only substitutions before a skill PR.",
-      "type": "general",
+      "type": "testing",
       "primaryAgents": [],
       "allAgents": [],
       "skills": [
@@ -1060,12 +1060,12 @@
   "statistics": {
     "byType": {
       "build": 2,
-      "general": 12,
+      "general": 10,
       "orchestration": 12,
       "planning": 2,
       "refactoring": 1,
-      "review": 15,
-      "testing": 53
+      "review": 13,
+      "testing": 57
     },
     "topAgents": [
       {

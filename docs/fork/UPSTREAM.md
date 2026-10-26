@@ -76,3 +76,7 @@ follow-upstream，未採用任何 commit。`origin/main` 已於 2026-09-27 壓�
 
 `ef648e01..90606c83` 共 914 commits 以三方合併算出結果樹，壓成 `main` 上的單一 commit；水位推進到 `90606c83`，PR #3711、issue #3722。
 衝突解法、掃描結果與觀察中的 open PR 見 [`DECISIONS.md`](DECISIONS.md) 同日條目。
+
+## 2026-10-26：整棵採用 `25278e7`（90606c8 之後）
+
+`90606c83..25278e7d` 共 102 commits 以三方合併算出結果樹，壓成 `main` 上的單一 commit；水位推進到 `25278e7d`，PR #3744、issue #3746。上游的行內解析器含反斜線，原生 Windows 下全部 hook 失效（上游 issue 3746），已在合併後修正並加回歸測試，細節見 [`DECISIONS.md`](DECISIONS.md)。

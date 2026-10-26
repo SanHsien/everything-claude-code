@@ -120,11 +120,13 @@ function inspectFrontmatter(lines) {
       blockScalarIndent = -1;
     }
 
-    const match = rawLine.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    // `(.*)` followed by an explicit leading-whitespace strip keeps the match
+    // linear: the earlier `\s*(.*)` pair overlapped on every whitespace run.
+    const match = rawLine.match(/^([A-Za-z0-9_-]+):(.*)$/);
     if (!match) continue;
 
     const key = match[1];
-    const rawValue = match[2];
+    const rawValue = match[2].replace(/^\s+/, '');
     // Strip YAML comments only when # appears outside a quoted scalar.
     const valueNoComment = stripUnquotedYamlComment(rawValue);
     values = Object.assign(Object.create(null), values, { [key]: valueNoComment });

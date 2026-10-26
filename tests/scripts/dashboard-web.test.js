@@ -53,7 +53,7 @@ for (const override of ['ECC_AGENT_DATA_HOME', 'CLAUDE_CONFIG_DIR']) {
 test('renderHTML emits executable scripts without syntax errors', () => {
   const { renderHTML } = require(SCRIPT);
   const html = renderHTML({ agents: [], skills: [], commands: [], rules: [], mcps: [], hooks: [] });
-  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)];
   assert.ok(scripts.length > 0);
   for (const script of scripts) new vm.Script(script[1]);
 });
@@ -70,7 +70,7 @@ asyncTest('served activity UI shows HTTP failures as errors and preserves health
     await withDashboardServer(async port => {
       const page = await requestDashboard(port);
       assert.strictEqual(page.statusCode, 200);
-      const script = [...page.body.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+      const script = [...page.body.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)]
         .find(match => match[1].includes('function renderActivity()'))[1];
       async function renderFeed() {
         let status;
