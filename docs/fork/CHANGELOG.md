@@ -5,6 +5,10 @@
 [`affaan-m/ECC`](https://github.com/affaan-m/ECC)
 的產品演進見其自身 [`CHANGELOG.md`](../../CHANGELOG.md) 與 [`docs/fork/UPSTREAM.md`](UPSTREAM.md) 的審查清冊。
 
+## 2026-10-26
+
+- 採用上游 `25278e7d`（102 commits）；修上游 issue 3746：inline resolver 的反斜線 regex 在原生 Windows `bash -c` 下被吃掉，造成全部 hooks SyntaxError，改為無反斜線等價寫法並加回歸測試。新增 workflow（issue-submission-guard、maintenance）加上 owner 守衛，只在官方 repo 執行。
+
 ## 2026-10-25
 
 - 採用上游 `90606c83`（914 commits）；`pr-burst-guard.yml` 只在官方 repo 執行。

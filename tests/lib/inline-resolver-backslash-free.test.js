@@ -49,6 +49,20 @@ check('inline resolver source strings contain no backslash', () => {
   assert.ok(!INLINE_WSL_CONVERSION.includes(BACKSLASH), 'INLINE_WSL_CONVERSION');
 });
 
+check('inline resolver snippets avoid the word "test" so the command registry does not misclassify commands', () => {
+  assert.ok(!/test/i.test(INLINE_RESOLVE), 'INLINE_RESOLVE');
+  assert.ok(!/test/i.test(INLINE_WSL_CONVERSION), 'INLINE_WSL_CONVERSION');
+});
+
+check('commands embedding the inline resolver keep their registry type', () => {
+  const registry = JSON.parse(fs.readFileSync(path.join(root, 'docs/COMMAND-REGISTRY.json'), 'utf8'));
+  const expected = { 'instinct-status': 'review', 'skill-health': 'review', sessions: 'general', 'skill-host-compat': 'general' };
+  const types = Object.fromEntries(registry.commands.map(command => [command.command, command.type]));
+  for (const [name, type] of Object.entries(expected)) {
+    assert.strictEqual(types[name], type, `${name} type`);
+  }
+});
+
 for (const file of ['hooks/hooks.json', 'hooks/codex-hooks.json']) {
   check(`${file} node -e commands contain no backslash`, () => {
     const commands = hookCommands(file).filter(command => command.startsWith('node -e'));

@@ -40,7 +40,7 @@ const WINDOWS_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
 // Must stay backslash-free: native Windows runs hook commands as `bash.exe -c "..."` and the
 // argv/bash quoting layers collapse backslashes, which turned the former regex literals into a
 // SyntaxError for every hook (upstream issue 3746). Pinned by tests/lib/inline-resolver-backslash-free.test.js.
-const INLINE_WSL_CONVERSION = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')&&/^[A-Za-z]:/.test(d)&&(d.charAt(2)==='/'||d.charCodeAt(2)===92)){d='/mnt/'+d.charAt(0).toLowerCase()+d.slice(2).split(String.fromCharCode(92)).join('/')}}}catch(_){}`;
+const INLINE_WSL_CONVERSION = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')&&/^[A-Za-z]:/.exec(d)&&(d.charAt(2)==='/'||d.charCodeAt(2)===92)){d='/mnt/'+d.charAt(0).toLowerCase()+d.slice(2).split(String.fromCharCode(92)).join('/')}}}catch(_){}`;
 
 /**
  * Convert a Windows path to a WSL path.
