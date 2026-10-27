@@ -35,6 +35,9 @@
 | R-05 | P2 | `SECURITY.md`／`CONTRIBUTING.md` 只指向上游，本線 PR 與 overlay 問題會打錯地方 | 開頭 overlay：本線 PR／overlay 走 SanHsien；產品漏洞與產品貢獻仍指向上游 |
 | R-06 | P2 | `install.ps1`／`install.sh` clone bootstrap 跑 `npm install` 且無 `--ignore-scripts` | 兩邊都加上 `--ignore-scripts`；不改官方 npm 發佈面 |
 | R-07 | P3 | fork CI Python 3.11，本機 Windows 是 3.14.7 | `fork-maintenance.yml` 與 `upstream-check.yml` 改 3.14；產品 `ci.yml` 的 Python job 仍 3.11 |
+| R-08 | P2 | 2026-10-26 把行內解析器改成無反斜線後，`tests/lib/serialized-hook-wsl.test.js` 的突變仍找上游的 `,'/'`，所有 POSIX CI 職紅燈 | 突變改找 `.join('/')`；`c4c27ff9`，2026-10-28 |
+| R-09 | P3 | fork 的重複描述檢查（`validate-commands.js`）對全檔比對 `^description:`，兩個指令內文有同一行 `description:` 範例就誤判失敗；該檢查原本沒有測試 | 只讀前置資料區塊並補測試；`908deb39`，2026-10-28 |
+| R-10 | P2 | R-04 的守衛測試只看整個檔案有沒有 `github.repository`，上游在 gated workflow 新增未守衛的 job 仍會通過 | 改成逐 job 檢查自己的 `if:`；`814107d1`，2026-10-28 |
 
 ## 刻意不修
 

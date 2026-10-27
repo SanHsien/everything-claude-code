@@ -356,3 +356,17 @@ PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，�
 **PR／issue 軸**：PR #3723–#3744（21 筆）與 issue #3742、#3745、#3746 逐筆掃過。已合併的（3723、3732、3736 及其 commit）隨合併進來；3724 已關閉（見上）。**未提前引用任何 open PR**；觀察項：#3739（js-yaml 5.5.0，本 fork 釘 4.3.2，不跟）、#3737／#3738（依賴升級，等 Dependabot 自己的流程）、#3744（Python 3.11／Windows 的 selector 輸出可攜性，與本 fork Windows 主線相關，合併後採用）、#3741（文件稽核輸出編碼，同上）。issue 3745（`@opencode-ai/plugin` 缺 runtime 依賴）已由範圍內的上游 commit 修正；3742（Codex 外掛快取的 symlink）本 fork 不用 Codex 外掛快取，略過；3746 見上。
 
 **水位**：commit `25278e7d7b6cf6e6a4e7a6c8e10f14ff22f0eb5b`、PR #3744、issue #3746、日期 2026-10-26。
+
+## 2026-10-28：深度掃描 fork 自加程式；CodeQL 212–222 逐筆關閉
+
+**範圍**：`git diff 25278e7d..main` 的 fork 改動（`scripts/ci/validate-*.js`、行內解析器來源與產物、`tools/`、fork workflow 與守衛、fork 測試）。上游程式不改，觀察項記在下方。`tools/check_upstream_updates.py` 是艦隊共用正本，不在本 repo 單獨改。
+
+**修正**（各附修前失敗的證據）
+
+1. `c4c27ff9`：`tests/lib/serialized-hook-wsl.test.js` 自 `df46e59e` 起在所有 POSIX CI 職失敗（`Mutation must modify the shipped replacement`，main run 40537752542）。原因屬於 fork：10-26 改成無反斜線的 `.split(String.fromCharCode(92)).join('/')` 後，測試仍找上游的 `,'/'` 來突變。改成突變 `.join('/')`。本測試在 win32 跳過、本機沒有 WSL／docker，修後以 CI 驗證。上游 open PR #3748、#3759 是同一修正，上游合併後可改回上游版本。
+2. `908deb39`：fork 的重複描述檢查改為只讀前置資料。修前「reads the description from frontmatter only」失敗（`one.md, two.md share one description ... "shared example text"`）；另一筆新測試「fails when two commands share one description」修前修後都過，用來釘住原有行為。修後 196／196。
+3. `814107d1`：gated workflow 守衛測試改為逐 job 檢查。舊檢查對「只守一半」的合成 workflow 和拿掉 `maintenance.yml` `stale` 守衛的突變都會通過；新檢查抓到 `['announce']`、`['stale']`。目前 18 個 job 全部有守衛。
+
+**CodeQL 212–222（11 筆）**：全部是上游程式或測試碼，逐筆附理由關閉。212、213、219 假陽性（`shell:false` 加 `%ECC_CMD_TOKEN_n%` 間接傳參與引號／控制字元拒絕；loopback 固定位址加 port／key 驗證）；214–218、220–222 used in tests。220、221 是 10-26 改過正規式的 210、211 換了規則訊息重新出現，判定改為不再改測試、直接關閉。
+
+**觀察項（上游程式，不在 fork 修）**：issue #3761（config-protection 對 MultiEdit 逐項 `file_path` 可繞過）、#3762（run-with-flags 遇超大 Bash 輸入對 GateGuard fail-open）——兩者都是本 fork 實際載入的 hook，上游修正後隨合併進來；#3756、#3765（原生 Windows hook 失效）已由 fork 的 10-26 修正涵蓋。
