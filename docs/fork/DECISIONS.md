@@ -377,7 +377,7 @@ commit 軸為 0（上游 main 仍是 `25278e7d`）。PR、issue 一律 `--state 
 
 **引進：PR #3764**（`test(claw)`，head `0618bdc7a81c`，+85／-9，只動 `tests/scripts/claw.test.js`）。cherry-pick 上游 commit，未改寫。
 
-- 痛點實查：fork 的舊測試以一般 PATH 呼叫 `askClaude('sys','hist','msg')`。維護者機器有 `C:\Users\SanHsien\.local\bin\claude.exe`，而 `scripts/claw.js:118-131` 在 Windows 先找 `.exe`，所以跑全套測試會真的送出一次 `claude -p`（最多等 300 秒）。2026-10-28 本輪驗證時就因此實際呼叫過一次。違反「測試不得在維護者桌面啟動程式」。
+- 痛點實查：fork 的舊測試以一般 PATH 呼叫 `askClaude('sys','hist','msg')`。維護者機器有 `%USERPROFILE%\.local\bin\claude.exe`，而 `scripts/claw.js:118-131` 在 Windows 先找 `.exe`，所以跑全套測試會真的送出一次 `claude -p`（最多等 300 秒）。2026-10-28 本輪驗證時就因此實際呼叫過一次。違反「測試不得在維護者桌面啟動程式」。
 - 修前修後對照：PATH 只放一個會寫紀錄的假 `claude.cmd`＋System32＋node，舊測試紀錄 `called -p`，新測試 0 次；新測試 21／21 通過（其中 2 筆在 Windows 只印 skipped、仍計為通過）。Windows 上兩個 POSIX stub 測試會跳過，空 PATH 的錯誤路徑測試會跑，`where` 與 `claude` 都找不到，回 `[Error: ...]`。
 - 隱藏內容掃描：119 行 diff，無「空白夾內容」、無超長行、無 `eval`／`new Function(`／`globalThis`／長 base64。
 - 移除條件：上游合併 #3764 後，下次整棵採用時直接取上游版本。
