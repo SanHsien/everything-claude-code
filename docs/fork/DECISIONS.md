@@ -369,4 +369,35 @@ PR #4 的 CI workflow（每次 43 個 job）：run 37455773240（`55bfdd8b`，�
 
 **CodeQL 212–222（11 筆）**：全部是上游程式或測試碼，逐筆附理由關閉。212、213、219 假陽性（`shell:false` 加 `%ECC_CMD_TOKEN_n%` 間接傳參與引號／控制字元拒絕；loopback 固定位址加 port／key 驗證）；214–218、220–222 used in tests。220、221 是 10-26 改過正規式的 210、211 換了規則訊息重新出現，判定改為不再改測試、直接關閉。
 
-**觀察項（上游程式，不在 fork 修）**：issue #3761（config-protection 對 MultiEdit 逐項 `file_path` 可繞過）、#3762（run-with-flags 遇超大 Bash 輸入對 GateGuard fail-open）——兩者都是本 fork 實際載入的 hook，上游修正後隨合併進來；#3756、#3765（原生 Windows hook 失效）已由 fork 的 10-26 修正涵蓋。
+**觀察項（上游程式，不在 fork 修）**：issue #3761（config-protection 對 MultiEdit 逐項 `file_path` 可繞過）、#3762（run-with-flags 遇超大 Bash 輸入對 GateGuard fail-open）——兩者都在本 fork 隨附的 `hooks/hooks.json` 裡（維護者本機目前沒安裝 ECC plugin，見下一條目），上游修正後隨合併進來；#3756、#3765（原生 Windows hook 失效）已由 fork 的 10-26 修正涵蓋。
+
+## 2026-10-28：上游 PR #3747–#3764、issue #3754–#3765 逐筆分流
+
+commit 軸為 0（上游 main 仍是 `25278e7d`）。PR、issue 一律 `--state all` 列舉；14 筆 PR 全部 open，5 筆 issue 4 open、1 closed。判準照 `FORK.md`：open PR 預設不提前引用，例外是本 fork 現在就在痛的缺陷。
+
+**引進：PR #3764**（`test(claw)`，head `0618bdc7a81c`，+85／-9，只動 `tests/scripts/claw.test.js`）。cherry-pick 上游 commit，未改寫。
+
+- 痛點實查：fork 的舊測試以一般 PATH 呼叫 `askClaude('sys','hist','msg')`。維護者機器有 `C:\Users\SanHsien\.local\bin\claude.exe`，而 `scripts/claw.js:118-131` 在 Windows 先找 `.exe`，所以跑全套測試會真的送出一次 `claude -p`（最多等 300 秒）。2026-10-28 本輪驗證時就因此實際呼叫過一次。違反「測試不得在維護者桌面啟動程式」。
+- 修前修後對照：PATH 只放一個會寫紀錄的假 `claude.cmd`＋System32＋node，舊測試紀錄 `called -p`，新測試 0 次；新測試 21／21 通過（其中 2 筆在 Windows 只印 skipped、仍計為通過）。Windows 上兩個 POSIX stub 測試會跳過，空 PATH 的錯誤路徑測試會跑，`where` 與 `claude` 都找不到，回 `[Error: ...]`。
+- 隱藏內容掃描：119 行 diff，無「空白夾內容」、無超長行、無 `eval`／`new Function(`／`globalThis`／長 base64。
+- 移除條件：上游合併 #3764 後，下次整棵採用時直接取上游版本。
+
+**不引進（附證據與重看條件）**
+
+| 項目 | 內容 | 本 fork 實況 | 重看條件 |
+|---|---|---|---|
+| PR #3748、#3759 | 行內解析器去反斜線（+115／-77、+143／-72，動 `hooks/*.json`、5 份 `commands/*.md`、`helpers.js`、`resolve-ecc-root.js`） | fork 已有等價修正（`df46e59e`）；`hooks/hooks.json` 的 SessionStart 命令不含反斜線、`.join('/')` 恰 1 處；`tests/lib/inline-resolver-backslash-free.test.js` 12／12 | 其中一筆被上游合併：改採上游版本，移除 fork 的 overlay 與 `c4c27ff9` 的測試改動 |
+| PR #3760 | `transcript-context.js` 把 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 降為最後順位（+14／-5） | 本機 session 沒有這個變數；fork 的 `tests/hooks/suggest-compact.test.js` 44／44。手動設 `786432` 才重現 2 筆失敗。PR 的前提（這個變數是觸發點而非視窗大小）未經 Claude Code 文件證實，改的是產品判斷順序 | 維護者的 session 出現這個變數，或上游合併 |
+| PR #3747 | 新 skill `web-perimeter-owasp-2025-audit`（+160） | 產品新增內容，無痛點 | 上游合併 |
+| PR #3749、#3750、#3751 | `examples/evaluator-rag-prototype/` 範例與文件（+372、+231、+358） | fork 不用 evaluator RAG 原型 | 上游合併 |
+| PR #3752 | Codex 外掛快取文件＋`scripts/codex/check-plugin-cache.js`（+86／-9） | fork 不用 Codex 外掛快取（同 2026-10-26 對 issue 3742 的判斷） | 維護者改用 Codex 外掛，或上游合併 |
+| PR #3753、#3758、#3763 | skill 文件更新（flox 指向、tinystruct 1.7.37、golang-patterns 池化 buffer 範例回傳前要複製） | 只是文件；#3763 是範例程式的正確性問題，但不影響 fork 的程式 | 上游合併；或維護者實際照 golang-patterns 範例寫程式 |
+| PR #3755 | `ecc2/src/session/store.rs` 略過未註冊 session（+57） | fork 不建置、不發佈 ecc2 | 上游合併 |
+| PR #3757 | Continue CLI 安裝器與轉換器（+2174，新增安裝腳本） | 產品新功能，大型新增，無痛點 | 上游合併 |
+| issue #3761 | config-protection 對 MultiEdit 逐項 `file_path` 可繞過 | 缺陷存在：`scripts/hooks/config-protection.js:160` 只讀 `tool_input.file_path`／`file`。維護者本機沒安裝 ECC plugin（`~/.claude/settings.json` 與 plugin cache 都沒有），目前不受影響 | 維護者安裝本 fork 的 hook，或上游修正 |
+| issue #3762 | 超大 Bash 輸入讓 GateGuard fail-open | 缺陷存在：`scripts/hooks/run-with-flags.js` 的 fail-closed 清單沒有 `pre:bash:gateguard-fact-force`；需要 >1 MiB 的命令才觸發 | 同上 |
+| issue #3756 | Windows plugin 安裝因 `overrides` 不裝依賴、hooks=off 仍註冊 | `[eval]:1` 的部分已由 fork 的 `df46e59e` 涵蓋；`overrides` 的部分 fork 也有（`markdown-it`、`toml`），但只在以 marketplace plugin 安裝時發生，維護者沒這樣裝 | 維護者以 plugin 方式安裝本 fork |
+| issue #3765 | 原生 Windows SessionStart／SessionEnd SyntaxError | 已由 `df46e59e` 修正 | 無 |
+| issue #3754（closed） | 使用者端 install-state 與 plugin 重疊的錯誤訊息 | 使用者環境問題，非程式缺陷 | 無 |
+
+**水位**：commit `25278e7d7b6cf6e6a4e7a6c8e10f14ff22f0eb5b`（不變）、PR #3764、issue #3765、日期 2026-10-28。
