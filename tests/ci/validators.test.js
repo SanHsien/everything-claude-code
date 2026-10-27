@@ -1418,6 +1418,27 @@ function runTests() {
     cleanupTestDir(testDir);
   })) passed++; else failed++;
 
+  if (test('fails when two commands share one description', () => {
+    const testDir = createTestDir();
+    fs.writeFileSync(path.join(testDir, 'pr.md'), '---\ndescription: Open a pull request\n---\n# PR');
+    fs.writeFileSync(path.join(testDir, 'prp-pr.md'), '---\ndescription: "Open a pull request"\n---\n# PRP PR');
+
+    const result = runValidatorWithDir('validate-commands', 'COMMANDS_DIR', testDir);
+    assert.strictEqual(result.code, 1, 'Should fail on a shared description');
+    assert.ok(result.stderr.includes('pr.md, prp-pr.md share one description'), `Should name both files, got: ${result.stderr}`);
+    cleanupTestDir(testDir);
+  })) passed++; else failed++;
+
+  if (test('reads the description from frontmatter only', () => {
+    const testDir = createTestDir();
+    fs.writeFileSync(path.join(testDir, 'one.md'), '---\nargument-hint: <name>\n---\n# One\n\ndescription: shared example text\n');
+    fs.writeFileSync(path.join(testDir, 'two.md'), '# Two\n\ndescription: shared example text\n');
+
+    const result = runValidatorWithDir('validate-commands', 'COMMANDS_DIR', testDir);
+    assert.strictEqual(result.code, 0, `Body text is not a description, got: ${result.stderr}`);
+    cleanupTestDir(testDir);
+  })) passed++; else failed++;
+
   if (test('ignores non-md files', () => {
     const testDir = createTestDir();
     fs.writeFileSync(path.join(testDir, 'script.js'), 'console.log(1)');

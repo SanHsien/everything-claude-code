@@ -59,6 +59,17 @@ function validateFrontmatter(file, content) {
   return errors;
 }
 
+// Only the frontmatter `description` is what a model sees in the listing; a
+// `description: ...` line in the body (an example, a YAML snippet) is not one.
+function readFrontmatterDescription(content) {
+  const text = content.replace(/\r\n/g, '\n');
+  if (!text.startsWith('---\n')) return '';
+  const endIndex = text.indexOf('\n---\n', 4);
+  if (endIndex === -1) return '';
+  const match = text.slice(4, endIndex).match(/^description:(.*)$/m);
+  return match ? match[1].trim().replace(/^["']|["']$/g, '') : '';
+}
+
 function validateCommands() {
   if (!fs.existsSync(COMMANDS_DIR)) {
     console.log('No commands directory found, skipping validation');
@@ -186,9 +197,7 @@ function validateCommands() {
     } catch {
       continue;
     }
-    const match = content.match(/^description:\s*(.+)$/m);
-    if (!match) continue;
-    const description = match[1].trim().replace(/^["']|["']$/g, '');
+    const description = readFrontmatterDescription(content);
     if (!description) continue;
     if (!byDescription.has(description)) byDescription.set(description, []);
     byDescription.get(description).push(file);
