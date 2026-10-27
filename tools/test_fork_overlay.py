@@ -187,12 +187,43 @@ def test_agents_overlay_points_at_fork_rules() -> None:
     assert "production-ready AI coding plugin" in agents
 
 
+def _unguarded_jobs(text: str) -> list[str]:
+    """Return the jobs whose own `if:` does not pin the official repository.
+
+    The guard is per job: upstream adds jobs to these files, and a guard on a
+    sibling job does not stop a new one from running on the fork.
+    """
+    jobs_section = re.split(r"(?m)^jobs:\s*$", text, maxsplit=1)
+    if len(jobs_section) != 2:
+        return ["<no jobs section>"]
+    unguarded = []
+    blocks = re.split(r"(?m)^  ([A-Za-z0-9_-]+):\s*$", jobs_section[1])
+    for name, body in zip(blocks[1::2], blocks[2::2]):
+        guard = re.search(r"(?m)^    if:\s*(.+)$", body)
+        if not guard or f"github.repository == '{OFFICIAL_REPO}'" not in guard.group(1):
+            unguarded.append(name)
+    return unguarded
+
+
+def test_unguarded_jobs_checks_every_job_not_the_file() -> None:
+    half_guarded = (
+        "on: push\n"
+        "jobs:\n"
+        "  publish:\n"
+        f"    if: github.repository == '{OFFICIAL_REPO}'\n"
+        "    runs-on: ubuntu-latest\n"
+        "  announce:\n"
+        "    runs-on: ubuntu-latest\n"
+    )
+
+    assert _unguarded_jobs(half_guarded) == ["announce"]
+
+
 def test_dangerous_workflows_are_gated_to_upstream() -> None:
     workflows = ROOT / ".github" / "workflows"
     for name in GATED_WORKFLOWS:
         text = (workflows / name).read_text(encoding="utf-8")
-        assert "github.repository" in text, name
-        assert OFFICIAL_REPO in text, name
+        assert _unguarded_jobs(text) == [], name
 
 
 def test_product_ci_is_not_official_repo_only() -> None:
