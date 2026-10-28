@@ -264,3 +264,7 @@ tests/           — Test suite
 - Code is readable and maintainable
 - Performance is acceptable
 - User requirements are met
+
+## Roadmap
+
+- `ROADMAP.md` is the single source of truth for this repository's next work. When you finish or add work, update it in the same commit: delete finished rows, add new ones. Do not keep a to-do list in any other file.
