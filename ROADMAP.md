@@ -7,11 +7,13 @@
 這是 ECC 的 Windows 維護型 fork，提供跨宿主 skills、agents、commands、hooks 與安裝器；產品說明與本線維護界線見 [FORK](FORK.md)。2026-10-29 `gh` 查詢顯示 CI、CodeQL、Fork maintenance、Upstream check 最近成功，Dependabot／Code scanning 均為 0；上游 hook 的已知風險仍有條件式待辦，不能用告警為零推論不存在行為缺陷（2026-10-29 `gh` 查詢；[裁決](docs/fork/DECISIONS.md):397-398）。
 
 ## 近期：可以直接動手
+
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
 | 無：維持現狀，等待已記錄觸發條件 | 目前維護修正與上游分流已有驗收，未有需立即實作的未決缺陷 | 下次開工先查 `gh api repos/SanHsien/everything-claude-code/dependabot/alerts?state=open` 與 `gh api repos/SanHsien/everything-claude-code/code-scanning/alerts?state=open`，按水位判斷有無新上游；沒有新證據就不重做舊修正 | Claude Haiku | 2026-10-29 `gh` 查詢；tools/upstream_baseline.json；docs/fork/DECISIONS.md:378-398 |
 
 ## 中期：等條件成立再做
+
 | 項目 | 觸發條件 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
 | 修補 config-protection 與超大 Bash 輸入的拒絕行為 | 上游修正 #3761／#3762，或維護者開始安裝本 fork hook | 先重查實際安裝狀態；MultiEdit 的每個 file_path 都受保護，超大命令不讓 GateGuard 放行，合法輸入不退步；hook 回歸與產品 CI 通過 | Claude Opus | docs/fork/DECISIONS.md:397-398；scripts/hooks/config-protection.js:160；scripts/hooks/run-with-flags.js |
@@ -19,6 +21,7 @@
 | 重評 compact 視窗與其他未採用產品提案 | 實際 session 出現 CLAUDE_CODE_AUTO_COMPACT_WINDOW，或上游合併相關修正；其他提案命中既有裁決條件 | 對照實際設定與上游依據後補回歸；compact 判斷不誤用觸發值，產品測試不呼叫真實付費 CLI，採用理由可追溯 | Codex | docs/fork/DECISIONS.md:390、393-394；tests/scripts/claw.test.js |
 
 ## 刻意不做
+
 | 不做什麼 | 理由 | 什麼情況下重新考慮 |
 | --- | --- | --- |
 | 把上游 docs/ROADMAP.md 的產品與商業方向全部當成本線承諾 | 上游產品規劃與 fork 維護責任不同，見 FORK.md | 維護者選定具體本線需求與驗收範圍 |
