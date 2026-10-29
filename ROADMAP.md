@@ -4,7 +4,7 @@
 > 現況段的數字是 2026-10-29 依 `main` `b96ccc2e2319` 查的快照，開工前先重查 GitHub。
 
 ## 現況
-這是 ECC 的 Windows 維護型 fork，提供跨宿主 skills、agents、commands、hooks 與安裝器；產品說明與本線維護界線見 [FORK](FORK.md)。2026-10-29 `gh` 查詢顯示 CI、CodeQL、Fork maintenance、Upstream check 最近成功，Dependabot／Code scanning 均為 0；上游 hook 的已知風險仍有條件式待辦，不能用告警為零推論不存在行為缺陷（2026-10-29 `gh` 查詢；[裁決](docs/fork/DECISIONS.md):397-398）。
+這是 ECC 的 Windows 維護型 fork，提供跨宿主 skills、agents、commands、hooks 與安裝器；產品說明與本線維護界線見 [FORK](FORK.md)。2026-10-29 `gh` 查詢顯示 CI、CodeQL、Fork maintenance、Upstream check 最近成功，Dependabot／Code scanning 均為 0；上游 hook 的已知風險仍有條件式待辦，不能用告警為零推論不存在行為缺陷（2026-10-29 `gh` 查詢；`docs/fork/DECISIONS.md:397-398`）。
 
 ## 近期：可以直接動手
 
