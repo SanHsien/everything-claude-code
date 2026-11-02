@@ -401,3 +401,49 @@ commit 軸為 0（上游 main 仍是 `25278e7d`）。PR、issue 一律 `--state 
 | issue #3754（closed） | 使用者端 install-state 與 plugin 重疊的錯誤訊息 | 使用者環境問題，非程式缺陷 | 無 |
 
 **水位**：commit `25278e7d7b6cf6e6a4e7a6c8e10f14ff22f0eb5b`（不變）、PR #3764、issue #3765、日期 2026-10-28。
+
+## 2026-11-02：上游 PR #3771–#3841、issue #3766–#3831 逐筆分流；commit 軸（262 筆）延後整棵採用
+
+**範圍**：`25278e7d..b38be6a7`（上游 main tip）共 262 個 commit，`git diff --shortstat` 為 266 檔、+17186／−827。PR、issue 一律 `--state all` 列舉：PR 55 筆（25 MERGED、26 OPEN、4 CLOSED），issue 19 筆（6 CLOSED、13 OPEN）。每個 PR 取 2026-11-02 當下的 head、讀完整 diff，依判準八掃隱藏內容（新增行的長空白夾帶、超過 600 字元、`eval(`／`new Function(`／`globalThis`／`global.require`／`<script`／`javascript:`、80 字元以上 base64／hex、Unicode 控制與零寬字元）。命中全部為正常內容：`package-lock.json`／`yarn.lock` 的 integrity 雜湊（#3806、#3808）、`hooks/hooks.json` 既有的長行內命令（#3772、#3806 各 27 行）、文件長行與連結（#3806、#3809、#3811、#3812、#3823、#3837），以及測試碼的 `globalThis.crypto = crypto.webcrypto`（#3806）與 `new Function('exports', emitted)(fixtureExports)`（#3809，測試載入自己編譯的輸出）。沒有隱藏程式。
+
+**commit 軸：本輪不採用，水位 `25278e7d` 不動**。以 `git merge-tree --write-tree --merge-base=25278e7d HEAD upstream/main` 試算（不動工作樹）：266 檔、**12 個衝突檔**（`AGENTS.md`、5 份 `commands/*.md`、`hooks/codex-hooks.json`、`hooks/hooks.json`、`hooks/hooks.metadata.json`、`scripts/lib/install-targets/helpers.js`、`scripts/lib/resolve-ecc-root.js`、`tests/lib/serialized-hook-wsl.test.js`），全是 fork 在 10-26 為行內解析器去反斜線所改的檔。這筆整棵採用會動 hooks 與安裝器主流程，超出單輪小改動範圍，依派工說明寫進 `ROADMAP.md` 近期表，由維運長決定時機。證據顯示現在採用的條件已成立：上游 `dc9bb9f2`（2026-10-26）已做同樣的去反斜線修正，實測上游 tip 的 `hooks/hooks.json` 雙反斜線 0 處、`String.fromCharCode(92)` 27 處，與 fork 目前相同；先前 ROADMAP 記的觸發項 #3748 已 MERGED、#3760 已 MERGED、issue #3761／#3762 已 CLOSED 且各有 commit（#3775、#3776）。合併時衝突應以上游版本為準並移除 fork 的等價 overlay。
+
+**採用：PR #3830（OPEN，head `fbd14b44`，+161／−27，14 檔，全為測試）**。`gh pr diff 3830` 以 `git apply` 套用，未改寫。
+- 痛點實查：此機器 `fs.symlinkSync` 回 `EPERM`（Windows 未啟用開發人員模式，Node 實測 `symlink refused EPERM`）。修前逐一用 `node <test>` 跑 PR 動到的 12 個測試檔：10 個 exit 1（輸出含 `EPERM`）、另 2 個（`tests/scripts/codex-hooks.test.js`、`tests/scripts/command-runtime.test.js`）120 秒逾時；修後 12 個全部 exit 0，`codex-hooks` 54 passed／0 failed、`command-runtime` 46 passed／0 failed，新增的 `tests/lib/helpers/symlink-support.test.js` 也 exit 0。符合「本 fork 現在就在痛」的例外（同 #3764）。
+- 只動測試，不動產品碼；沒有符號連結權限時顯示 skip 而不是失敗，有權限的平台行為不變（PR 的 7 個 commit 以單一 diff 套用）。
+- 移除條件：上游合併 #3830 後，整棵採用時直接取上游版本。
+
+**已合併 25 筆**（#3771、#3773–#3780、#3789–#3796、#3798–#3801、#3803、#3804、#3806、#3807、#3809）：每筆 `git log 25278e7d..upstream/main --grep="#<編號>"` 至少命中 1 個 commit，隨 commit 軸整棵採用抵達，本輪不逐筆摘取。其中值得合併時優先驗的：#3775／#3776／#3777（config-protection、run-with-flags、gateguard，對應先前觀察的 issue #3761／#3762）、#3806／#3809（兩個整合 PR，243 檔與 53 檔，合併時最需要掃描的兩筆）、#3801（shell 引號解析）。
+
+**已關閉未合併 4 筆**
+
+| PR | 內容 | 本 fork 實況與判定 |
+|---|---|---|
+| #3772（+179／−79，13 檔） | hooks 行內 WSL 路徑去反斜線 | 不採用：上游改用 `dc9bb9f2` 直接修（見上），fork 已有等價修正（`df46e59e`）。 |
+| #3784（+257／−56） | `skills/frontend-slides/scripts/static-server.mjs` 符號連結強化 | 不採用：fork 與上游 tip 都沒有 `static-server.mjs`（`git show upstream/main:…` 回 does not exist），沒有可修的對象。 |
+| #3797（+117） | ecc2 排程文字就地編輯 | 不採用：fork 不建置、不發佈 ecc2；同題材的 #3798 已合併。 |
+| #3805（+29／−3） | `docker/gateguard-effectiveness/fake-claude.js` 的 shell 注入 | 不採用：只影響上游的 docker 測試 fake，fork 不跑該 harness，上游也未收。重看條件：fork 開始跑 docker harness。 |
+
+**OPEN 26 筆**：不提前引用（FORK.md），#3830 例外見上。其餘：
+
+| PR | 判定 | 理由與重看條件 |
+|---|---|---|
+| #3813, #3814, #3816, #3818, #3819, #3820, #3822, #3824 | 條件式，釘到 `monitored` | 都是 hooks、安裝器或 continuous-learning 的行為修正（#3813 Copilot helper 的 ESM 隔離、#3814 父行程消失時結束 hook runner、#3816 `@opencode-ai/plugin` 改為選用 peer 依賴、#3818 observer 專案範圍隔離、#3819 Node 腳本資料內的 bypass 文字、#3820 認得 `npm-shrinkwrap.json`、#3822 stdin 監聽與 tsc 路徑、#3824 commit-quality 的 `!` 破壞性變更標記）。本輪沒有逐一在 fork 重現缺陷（判準四要求的步驟留到合併時），維護者目前沒有遇到。上游合併或 head 移動時，檢查器會再報；合併後隨整棵採用抵達。 |
+| #3808 | 不採用 | 依賴升級（`yarn.lock` +501／−74，49 行 integrity）；fork 的 `overrides`／`resolutions` 有自己的釘版（`markdown-it`、`toml`），依賴走 Dependabot 自己的流程（同 10-26 對 #3737／#3738）。 |
+| #3787、#3811、#3817、#3829、#3833、#3835、#3836、#3837 | 不採用 | 產品新功能或非 Windows 主線的行為（benchmark 最佳化、harness 合規、ecc2 狀態刷新、continuous-learning Stop 提示、Pi 擴充兩筆、MCP 設定 deja-vu、`block-no-verify` 套件整合）；fork 無痛點。重看條件：上游合併，或維護者實際使用該功能。 |
+| #3812、#3823、#3827、#3832、#3834、#3838、#3839、#3841 | 不採用 | 文件、翻譯、skill 描述與命名（義大利文 README、Firecrawl 範例、gacha 輸出編碼、i18n 連結、第三人稱描述、DevFleet 名稱、連結、README 排版）；fork 保持上游英文 README 契約（見 2026-08-27），不自行改字。上游合併後經 commit 軸抵達。 |
+
+**issue（19 筆）**
+
+| issue | 判定 | 理由 |
+|---|---|---|
+| #3768、#3769、#3770、#3781、#3786（CLOSED） | 隨整棵採用抵達 | 分別由已合併的 #3773、#3779、#3774、#3780／#3789、#3794 修正。 |
+| #3767（CLOSED，標題 `D`） | 不收 | 內容空洞，無可處理項目。 |
+| #3802（OPEN）原生 Windows 的 Stop hook 反斜線 SyntaxError | 已涵蓋 | 與 10-26 的 issue 3746 同一缺陷。fork 的 `hooks/hooks.json` 雙反斜線 0 處、`fromCharCode(92)` 27 處（2026-11-02 實測），與上游 tip 相同。 |
+| #3793（OPEN）plugin marketplace 目錄缺 `js-yaml` | 不採用 | 只在以 marketplace plugin 方式安裝時發生（同 10-28 對 #3756 的判斷），維護者沒這樣裝。重看條件：維護者以 plugin 安裝本 fork。 |
+| #3810（OPEN）、#3821（OPEN） | 對應 PR #3816、#3822 | 已一併釘在 `monitored`。 |
+| #3788（OPEN） | 隨整棵採用抵達 | 由已合併的 #3789 補文件。 |
+| #3783（OPEN）34 個 skill 超過 500 行、一個名稱含保留字 | 不採用 | 上游 skill 品質規範；保留字部分由 OPEN 的 #3838 處理。 |
+| #3766、#3782、#3785、#3815、#3825、#3826、#3831（OPEN） | 不收 | 上游 GitHub App 權限、兩筆無實質內容的 `[Copilot]`、上游貢獻流程、MCP 設定遮蔽的回饋、Pi 擴充兩筆；與 fork 的 Windows 維護線無關。#3785 問的是透過 fork 回貢的流程，本 fork 規則是不回貢（見 2026-08-27）。 |
+
+**水位**：commit `25278e7d7b6cf6e6a4e7a6c8e10f14ff22f0eb5b`（不變，上游 tip `b38be6a7`，behind 262）、PR #3841、issue #3831、日期 2026-11-02。`--strict` 仍會因 commit 軸 exit 1，這是刻意的：整棵採用前不能把 262 個 commit 當成審過。

@@ -10,14 +10,12 @@
 
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 無：維持現狀，等待已記錄觸發條件 | 目前維護修正與上游分流已有驗收，未有需立即實作的未決缺陷 | 下次開工先查 `gh api repos/SanHsien/everything-claude-code/dependabot/alerts?state=open` 與 `gh api repos/SanHsien/everything-claude-code/code-scanning/alerts?state=open`，按水位判斷有無新上游；沒有新證據就不重做舊修正 | Claude Haiku | 2026-10-29 `gh` 查詢；tools/upstream_baseline.json；docs/fork/DECISIONS.md:378-398 |
+| 整棵採用上游 `b38be6a7`（`25278e7d` 之後 262 個 commit），並在衝突處改用上游版本、移除 fork 的等價 overlay | 先前記的觸發項都已成立：#3748、#3760 已 MERGED，issue #3761／#3762 已 CLOSED（#3775、#3776 已修），上游 `dc9bb9f2` 已做同樣的行內解析器去反斜線；不採用，`tools/check_upstream_updates.py --strict` 會一直因 commit 軸 exit 1 | 以 `25278e7d` 為 base 三方合併（`git merge-recursive 25278e7d -- HEAD upstream/main`），預期 12 個衝突檔：`AGENTS.md`、5 份 `commands/*.md`、`hooks/codex-hooks.json`、`hooks/hooks.json`、`hooks/hooks.metadata.json`、`scripts/lib/install-targets/helpers.js`、`scripts/lib/resolve-ecc-root.js`、`tests/lib/serialized-hook-wsl.test.js`；合併前掃描新增行（#3806、#3809 兩個整合 PR 最大）；用 Node 以 Git Bash 逐條實跑 `hooks/hooks.json` 無 SyntaxError；`node tests/run-all.js` 與 `tools\dev_check.ps1` 綠；水位推進到實際審到的 commit | Claude Opus | docs/fork/DECISIONS.md 2026-11-02 條目；`git merge-tree --write-tree --merge-base=25278e7d HEAD upstream/main`；commit df46e59e、c4c27ff9 |
 
 ## 中期：等條件成立再做
 
 | 項目 | 觸發條件 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 修補 config-protection 與超大 Bash 輸入的拒絕行為 | 上游修正 #3761／#3762，或維護者開始安裝本 fork hook | 先重查實際安裝狀態；MultiEdit 的每個 file_path 都受保護，超大命令不讓 GateGuard 放行，合法輸入不退步；hook 回歸與產品 CI 通過 | Claude Opus | docs/fork/DECISIONS.md:397-398；scripts/hooks/config-protection.js:160；scripts/hooks/run-with-flags.js |
-| 上游修正覆蓋 Windows 行內解析器時解除 overlay | 上游合併 #3748 或 #3759 | 採上游來源與生成產物，移除等價 fork 改動；Windows hook 啟動無 SyntaxError，POSIX serialized-hook 突變測試仍能抓到替換錯誤，完整產品 CI 通過 | Codex | docs/fork/DECISIONS.md:366、389；commit df46e59e、c4c27ff9 |
 | 重評 compact 視窗與其他未採用產品提案 | 實際 session 出現 CLAUDE_CODE_AUTO_COMPACT_WINDOW，或上游合併相關修正；其他提案命中既有裁決條件 | 對照實際設定與上游依據後補回歸；compact 判斷不誤用觸發值，產品測試不呼叫真實付費 CLI，採用理由可追溯 | Codex | docs/fork/DECISIONS.md:390、393-394；tests/scripts/claw.test.js |
 
 ## 刻意不做
