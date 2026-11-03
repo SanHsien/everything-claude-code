@@ -461,3 +461,15 @@ commit 軸為 0（上游 main 仍是 `25278e7d`）。PR、issue 一律 `--state 
 **鎖檔與驗收界線**：上游已移除 `effect`，`package-lock.json` 與 `yarn.lock` 都不再含 `toml`，故刪除 `overrides` 與 `resolutions` 的兩條 `toml` 項目（2026-10-24 條目的移除條件，以鎖檔實查成立）；上游已含等價 `markdown-it` 修補。`npm ci --ignore-scripts` 成功後還原其改寫的 Yarn v1 鎖檔，維持三方結果的 Yarn 4 格式，該檔與上游一致。27 條 hook 命令透過 Node／Git Bash、隔離 bootstrap stub 逐條驗證，沒有 SyntaxError；此證據只涵蓋命令解析，不代表真實宿主安裝或 hook 副作用驗收。commit 水位以 fork CI（windows-latest）為準，本機的兩個失敗另列於下方裁決；PR／issue 缺乏新的逐筆分流證據，維持 #3841／#3831 與既有 monitored 清冊。
 
 **驗收與水位裁決**：`npm ci --ignore-scripts` exit 0；完整 `npm test`（包含 `node tests/run-all.js`）exit 1，8,000 個測試中 7,998 passed／2 failed，456 個檔通過／2 個檔失敗。`ci/context-profiles.test.js` 子程序固定 60 秒上限，單檔診斷重跑在 60,031.57 ms 回 `ETIMEDOUT`／`status: null`，2 passed／1 failed（exit 1）；同一驗證器在前置閘門無此測試上限時已成功完成 34 個 profile／target 投影。`lib/install-state.test.js` 的並行 rename 曾回 `EPERM`，單檔重跑 10 passed／0 failed（exit 0）；atomic-write、install-state 與該測試在採用範圍內均未變動。不放寬 timeout、不修改無關產品碼；完整本機綠燈未達成，但兩筆失敗皆非本次採用造成：`ci/context-profiles.test.js` 在乾淨 HEAD 以舊的 30 秒上限同樣回 `ETIMEDOUT`，`lib/install-state.test.js` 單檔重跑通過；計入勝負的是 fork CI（windows-latest）。**水位推進到 `b38be6a7`**（262 個 commit 全數審過並整合）；本機逾時另列 ROADMAP 近期列追查。PR／issue 水位仍為 #3841／#3831，open PR #3830 上游尚未合併，仍留在 `monitored`。
+
+## 2026-11-03：新增 `minimatch` override 11.0.1
+
+**決定**：`package.json` 的 `overrides` 與 `resolutions` 新增 `minimatch: 11.0.1`（精確釘版，同其他項目），`package-lock.json` 用 `npm install --package-lock-only --ignore-scripts` 重產，`yarn.lock` 用 yarn 4.9.2 `install --mode=update-lockfile` 重產。對應 Dependabot 警示 #61（package-lock.json）與 #63（yarn.lock），受影響範圍 `< 11.0.1`（GHSA-g3hv-75wg-m249，medium），最低安全版 11.0.1。
+
+**理由**：Dependabot security update 失敗是因為所有上游父套件都把 minimatch 鎖在 10.x，解析器只能裝到 10.2.5。兩份鎖檔都只有一個 `minimatch` 條目（10.2.5），皆為 devDependency，經 `eslint`（直接與 `@eslint/config-array`）、`markdownlint-cli`（`~10.2.5`）、`c8` → `test-exclude` → `glob`（皆為 10.x 範圍）；`package.json` 的 `dependencies` 沒有 minimatch，`files` 發佈清單也不含 `node_modules`，所以不隨產品內容出貨。三個呼叫端都用 `require('minimatch')` 或 `import {minimatch}` 取具名匯出，並使用 `minimatch()` 函式與 `new minimatch.Minimatch(...)`；11.0.1 仍匯出同一組，實測 `minimatch.Minimatch` 為 function。11.x 新增 `@isaacs/nonrecursive-glob-match` 作為匹配引擎，沒有 `engines` 限制。
+
+**為何釘 11.0.1 而不是 `^11.0.1`**：11.0.4 把 `engines.node` 收緊為 `20 || >=22`，而產品 `ci.yml` 矩陣含 Node 18.x；11.0.0 至 11.0.3 與 11.0.1 一樣宣告 `18 || 20 || >=22`。精確釘在最低安全版，Node 18 矩陣不會被拉進不支援的版本。
+
+**驗收**：`npm ls minimatch --all` 全部解析到 11.0.1；`npm audit --package-lock-only` 由 8 個 moderate 降為 3 個，minimatch 與經它連帶的 `eslint`、`markdownlint-cli` 項目消失，剩下的是不同公告（`glob` 的 GHSA-3g3m-2fjr-6pw4，經 `c8`／`test-exclude`），無 Dependabot 警示。在 yarn 4.9.2 以乾淨副本跑 `yarn install --immutable --mode=skip-build` exit 0，解析到 11.0.1。`eslint .` 與 `markdownlint` 實際以 11.0.1 跑完；`test-exclude` 的 `shouldInstrument` 與 `globSync` 直接呼叫結果正確。`npm test` 完整一輪：8,001 個測試中 7,999 passed／2 failed；`lib/install-state.test.js` 為既有的並行 rename 不穩定，`hooks/context-prompt-suggestions.test.js` 在滿載下因時間限制回空輸出，單檔重跑 10 passed／0 failed，兩者都與 minimatch 無關。`c8` 在本機 Node 26 於 `yargs` 載入階段即失敗（ESM／CJS），未走到 minimatch；覆蓋率以 fork CI 為準。
+
+**移除條件**：`eslint`、`markdownlint-cli`、`test-exclude`／`glob` 的 minimatch 範圍都涵蓋 `>=11.0.1` 時，刪除這兩條 `minimatch` 項目。
