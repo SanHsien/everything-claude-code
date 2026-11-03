@@ -447,3 +447,17 @@ commit 軸為 0（上游 main 仍是 `25278e7d`）。PR、issue 一律 `--state 
 | #3766、#3782、#3785、#3815、#3825、#3826、#3831（OPEN） | 不收 | 上游 GitHub App 權限、兩筆無實質內容的 `[Copilot]`、上游貢獻流程、MCP 設定遮蔽的回饋、Pi 擴充兩筆；與 fork 的 Windows 維護線無關。#3785 問的是透過 fork 回貢的流程，本 fork 規則是不回貢（見 2026-08-27）。 |
 
 **水位**：commit `25278e7d7b6cf6e6a4e7a6c8e10f14ff22f0eb5b`（不變，上游 tip `b38be6a7`，behind 262）、PR #3841、issue #3831、日期 2026-11-02。`--strict` 仍會因 commit 軸 exit 1，這是刻意的：整棵採用前不能把 262 個 commit 當成審過。
+
+## 2026-11-03：以明確 base 三方整合上游 `b38be6a7`
+
+**範圍**：開工時 `git fetch upstream main` 的 `upstream/main` 為 `b38be6a7f6350964d59328b52f0624e1d1d552d1`；`25278e7d7b6cf6e6a4e7a6c8e10f14ff22f0eb5b..b38be6a7` 共 262 個 commit、266 個上游變更檔。以 `git merge-tree --write-tree --merge-base=25278e7d HEAD upstream/main` 計算三方結果，衝突解決前的計算樹為 `d2fa0b866fba14563149eee6ea0765fe1e3f9660`；只將結果檔案寫入工作目錄，保留 Git index 與 HEAD。
+
+**合併前掃描**：以 `git diff --no-ext-diff --unified=0 25278e7d upstream/main` 取得新增 17,165 行；檢查長空白（40 字元以上）、超長單行（2,000 字元以上）、`eval`／`new Function`／`global.require`、長 base64／hex（160 字元以上）、零寬與雙向控制字元。9 條超長行為公開的 hook bootstrap；唯一動態函式為 `tests/skills/typescript-patterns.test.js` 執行本地編譯 fixture 的 `new Function`。未發現長空白、長編碼或隱藏控制字元。
+
+**衝突裁決**：12 檔的產品內容全部採上游：`AGENTS.md`、`commands/auto-update.md`、`commands/instinct-status.md`、`commands/sessions.md`、`commands/skill-health.md`、`commands/skill-host-compat.md`、`hooks/codex-hooks.json`、`hooks/hooks.json`、`hooks/hooks.metadata.json`、`scripts/lib/install-targets/helpers.js`、`scripts/lib/resolve-ecc-root.js`、`tests/lib/serialized-hook-wsl.test.js`。`AGENTS.md` 保留 fork 維護標頭，以及 fork 專屬的 `## Roadmap`、Prompt injection defense baseline、`Claude Code Entry Point & Dev Notes` 三段，其餘採上游；行內解析器與 serialized WSL 測試的等價 fork 產品 overlay 由上游修正取代。保留額外的無反斜線回歸測試、既有假 CLI 隔離及 Windows 符號連結能力測試；沒有新增提前引用 open PR，也沒有刪除既有檔案。
+
+**新增 fork 守衛**：`npmscan.yml` 會向第三方傳送依賴檔並對 PR 留言，故 `scan` job 限定 `github.repository == 'affaan-m/ECC'`，納入逐 job 守衛清冊。回歸先紅（`scan` 缺守衛，1 failed／1 passed），加上守衛後綠（2 passed）。產品 `ci.yml` 維持在 fork 執行。
+
+**鎖檔與驗收界線**：上游已移除 `effect`，`package-lock.json` 與 `yarn.lock` 都不再含 `toml`，故刪除 `overrides` 與 `resolutions` 的兩條 `toml` 項目（2026-10-24 條目的移除條件，以鎖檔實查成立）；上游已含等價 `markdown-it` 修補。`npm ci --ignore-scripts` 成功後還原其改寫的 Yarn v1 鎖檔，維持三方結果的 Yarn 4 格式，該檔與上游一致。27 條 hook 命令透過 Node／Git Bash、隔離 bootstrap stub 逐條驗證，沒有 SyntaxError；此證據只涵蓋命令解析，不代表真實宿主安裝或 hook 副作用驗收。commit 水位以 fork CI（windows-latest）為準，本機的兩個失敗另列於下方裁決；PR／issue 缺乏新的逐筆分流證據，維持 #3841／#3831 與既有 monitored 清冊。
+
+**驗收與水位裁決**：`npm ci --ignore-scripts` exit 0；完整 `npm test`（包含 `node tests/run-all.js`）exit 1，8,000 個測試中 7,998 passed／2 failed，456 個檔通過／2 個檔失敗。`ci/context-profiles.test.js` 子程序固定 60 秒上限，單檔診斷重跑在 60,031.57 ms 回 `ETIMEDOUT`／`status: null`，2 passed／1 failed（exit 1）；同一驗證器在前置閘門無此測試上限時已成功完成 34 個 profile／target 投影。`lib/install-state.test.js` 的並行 rename 曾回 `EPERM`，單檔重跑 10 passed／0 failed（exit 0）；atomic-write、install-state 與該測試在採用範圍內均未變動。不放寬 timeout、不修改無關產品碼；完整本機綠燈未達成，但兩筆失敗皆非本次採用造成：`ci/context-profiles.test.js` 在乾淨 HEAD 以舊的 30 秒上限同樣回 `ETIMEDOUT`，`lib/install-state.test.js` 單檔重跑通過；計入勝負的是 fork CI（windows-latest）。**水位推進到 `b38be6a7`**（262 個 commit 全數審過並整合）；本機逾時另列 ROADMAP 近期列追查。PR／issue 水位仍為 #3841／#3831，open PR #3830 上游尚未合併，仍留在 `monitored`。

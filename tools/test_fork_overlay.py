@@ -27,6 +27,8 @@ GATED_WORKFLOWS = (
     "pr-burst-guard.yml",
     # Moderates other contributors' Issues (comments, locks); official repository only.
     "issue-submission-guard.yml",
+    # Sends dependency files to a third party and comments on PRs.
+    "npmscan.yml",
 )
 UNGATED_WORKFLOWS = (
     "ci.yml",

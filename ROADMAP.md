@@ -10,7 +10,7 @@
 
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 整棵採用上游 `b38be6a7`（`25278e7d` 之後 262 個 commit），並在衝突處改用上游版本、移除 fork 的等價 overlay | 先前記的觸發項都已成立：#3748、#3760 已 MERGED，issue #3761／#3762 已 CLOSED（#3775、#3776 已修），上游 `dc9bb9f2` 已做同樣的行內解析器去反斜線；不採用，`tools/check_upstream_updates.py --strict` 會一直因 commit 軸 exit 1 | 以 `25278e7d` 為 base 三方合併（`git merge-recursive 25278e7d -- HEAD upstream/main`），預期 12 個衝突檔：`AGENTS.md`、5 份 `commands/*.md`、`hooks/codex-hooks.json`、`hooks/hooks.json`、`hooks/hooks.metadata.json`、`scripts/lib/install-targets/helpers.js`、`scripts/lib/resolve-ecc-root.js`、`tests/lib/serialized-hook-wsl.test.js`；合併前掃描新增行（#3806、#3809 兩個整合 PR 最大）；用 Node 以 Git Bash 逐條實跑 `hooks/hooks.json` 無 SyntaxError；`node tests/run-all.js` 與 `tools\dev_check.ps1` 綠；水位推進到實際審到的 commit | Claude Opus | docs/fork/DECISIONS.md 2026-11-02 條目；`git merge-tree --write-tree --merge-base=25278e7d HEAD upstream/main`；commit df46e59e、c4c27ff9 |
+| 追查 Windows 本機 `scripts/ci/validate-context-profiles.js` 逾 60 秒的原因 | `tests/ci/context-profiles.test.js` 在這台機器於乾淨 HEAD 以舊的 30 秒上限同樣 `ETIMEDOUT`，整合後以 60 秒上限仍逾時，而 fork CI（windows-latest）先前能過；本機閘門因此無法全綠 | 找出本機比 CI 慢的原因（例如逐 profile／target 投影的檔案 I/O、防毒掃描或磁碟）並量測前後耗時；除非有依據，不放寬 timeout | Codex | docs/fork/DECISIONS.md 2026-11-03 條目；`tests/ci/context-profiles.test.js` |
 
 ## 中期：等條件成立再做
 

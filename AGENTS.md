@@ -7,7 +7,7 @@
 > 產品行為（skills、agents、commands、hooks、安裝器）仍遵守下文上游規則。
 > 溝通使用繁體中文，直接交付可驗證結果，避免冗長背景鋪陳。
 
-This is a **production-ready AI coding plugin** providing 71 specialized agents, 311 skills, 97 commands, and automated hook workflows for software development.
+This is a **production-ready AI coding plugin** providing 71 specialized agents, 314 skills, 98 commands, and automated hook workflows for software development.
 
 **Version:** 2.2.3
 
@@ -130,7 +130,6 @@ Use parallel execution for independent operations — launch multiple agents sim
 - Authentication/authorization verified
 - Rate limiting on all endpoints
 - Error messages don't leak sensitive data
-- `.env` files, session memory, and account data never committed
 
 **Secret management:** NEVER hardcode secrets. Use environment variables or a secret manager. Validate required secrets at startup. Rotate any exposed secrets immediately.
 
@@ -176,17 +175,6 @@ Test types (all required):
 
 Troubleshoot failures: check test isolation → verify mocks → fix implementation (not tests, unless tests are wrong).
 
-**Run tests:**
-```bash
-# Run all tests
-node tests/run-all.js
-
-# Run individual test files
-node tests/lib/utils.test.js
-node tests/lib/package-manager.test.js
-node tests/hooks/hooks.test.js
-```
-
 ## Development Workflow
 
 1. **Plan** — Use ecc:planner agent, identify dependencies and risks, break into phases
@@ -229,8 +217,8 @@ node tests/hooks/hooks.test.js
 
 ```
 agents/          — 71 specialized subagents
-skills/          — 311 workflow skills and domain knowledge
-commands/        — 97 slash commands
+skills/          — 314 workflow skills and domain knowledge
+commands/        — 98 slash commands
 hooks/           — Trigger-based automations
 rules/           — Always-follow guidelines (common + per-language)
 scripts/         — Cross-platform Node.js utilities

@@ -37,10 +37,10 @@ function setWSLForTesting(value) {
 const WINDOWS_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
 
 // Compact WSL conversion snippet for inline resolvers embedded in commands and hooks.
-// Must stay backslash-free: native Windows runs hook commands as `bash.exe -c "..."` and the
-// argv/bash quoting layers collapse backslashes, which turned the former regex literals into a
-// SyntaxError for every hook (upstream issue 3746). Pinned by tests/lib/inline-resolver-backslash-free.test.js.
-const INLINE_WSL_CONVERSION = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')&&/^[A-Za-z]:/.exec(d)&&(d.charAt(2)==='/'||d.charCodeAt(2)===92)){d='/mnt/'+d.charAt(0).toLowerCase()+d.slice(2).split(String.fromCharCode(92)).join('/')}}}catch(_){}`;
+// Contains no backslash: on native Windows, Claude Code runs hooks as `bash.exe -c "<command>"`
+// and the extra argv/MSYS unescape layer collapses backslashes, which broke regex literals (#3746).
+// The backslash separator is built with String.fromCharCode(92) instead.
+const INLINE_WSL_CONVERSION = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')){var b=String.fromCharCode(92),m=d.match(/^([A-Za-z]):/);if(m&&(d.charAt(2)==='/'||d.charAt(2)===b)){var dl=m[1].toLowerCase();d='/mnt/'+dl+d.slice(2).split(b).join('/')}}}}catch(_){}`;
 
 /**
  * Convert a Windows path to a WSL path.
@@ -490,6 +490,7 @@ module.exports = {
   createNamespacedFlatRuleOperations,
   createRemappedOperation,
   isForeignPlatformPath,
+  listRelativeFiles,
   normalizeRelativePath,
   planClaudeHooksOperations,
   isWSL,

@@ -28,7 +28,7 @@
 | `tools/dev_check.ps1` | Windows 本機一鍵 fork gate |
 | `.github/workflows/fork-maintenance.yml` | fork 文件與連結檢查 |
 | `.github/workflows/upstream-check.yml` | 每週對 `upstream/main` 做未審查 commit 檢查 |
-| 上游 release／announce／metrics／SLSA／maintenance／supply-chain-watch | 加上只在官方 `affaan-m/ECC` 執行的 guard |
+| 上游 release／announce／metrics／SLSA／maintenance／supply-chain-watch／npmscan | 加上只在官方 `affaan-m/ECC` 執行的 guard |
 | `docs/fork/` | Windows 開發、上游審查、決策 |
 | 上游 `ci.yml` | **保留並在本 fork 跑**，這是產品回歸 |
 

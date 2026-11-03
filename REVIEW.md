@@ -93,3 +93,13 @@ node scripts/ci/check-unicode-safety.js          → Unicode safety check passed
 - **沒有**在真實 Claude Code／Cursor／Codex 上做安裝 smoke。
 - `dev_check.ps1` **不含**產品 unicode-safety、npm audit、coverage。
 - **不宣稱**本 fork 會發自己的 npm 或 GitHub Release。
+
+## 2026-11-03：上游 `b38be6a7` 三方整合檢查
+
+- 審查基準為 fork `1f8a50ac93f3f25e3c535ed15e7e91fecdd2d833`，上游目標為 `b38be6a7f6350964d59328b52f0624e1d1d552d1`，明確 base 為 `25278e7d`（262 個 commit）。整合方式、隱藏內容掃描與 12 檔衝突裁決見 [決策紀錄](docs/fork/DECISIONS.md#2026-11-03以明確-base-三方整合上游-b38be6a7)。
+- 行內解析器及 serialized WSL 測試取上游修正；fork 的維護標頭、官方 repo workflow 隔離與既有測試替身保留。
+- 新增 `npmscan.yml` 的逐 job 官方 repo 守衛，測試先紅後綠（1 failed／1 passed -> 2 passed）。既有產品 CI 不加官方 repo 限制。
+- Node／Git Bash 逐條執行 27 條 hook 命令，隔離 bootstrap stub，沒有 SyntaxError；無反斜線回歸 12 passed／0 failed。這是命令解析驗收，未涵蓋真實宿主安裝。
+
+- 完整 `npm test` exit 1：7,998 passed／2 failed，456 個檔通過／2 個檔失敗。context-profile 的 60 秒子程序上限單檔重跑仍為 `ETIMEDOUT`（60.03 秒，2 passed／1 failed，exit 1）；安裝狀態並行 rename 的 `EPERM` 單檔重跑恢復為 10 passed／0 failed（exit 0）。未變更測試上限或無關產品碼。
+- `npm ci --ignore-scripts` exit 0，依賴稽核報 8 個 moderate；依賴警示沒有以整合通過代替處置。commit 水位推進到 `b38be6a7`（262 個 commit 全數審過並整合）；PR／issue 水位維持 #3841／#3831，兩筆本機失敗皆非採用造成，驗收以 fork CI（windows-latest）為準。

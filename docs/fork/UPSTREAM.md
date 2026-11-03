@@ -83,4 +83,9 @@ follow-upstream，未採用任何 commit。`origin/main` 已於 2026-09-27 壓�
 
 ## 2026-11-02：PR／issue 軸審至 #3841／#3831，commit 軸延後
 
-PR #3771–#3841（55 筆）與 issue #3766–#3831（19 筆）逐筆分流，採用 open PR #3830（Windows 無符號連結權限時測試 skip，修前 12 個測試檔失敗或逾時，修後全過）。commit 軸 `25278e7d..b38be6a7` 共 262 個、12 個衝突檔，未採用，水位不動；整棵採用已寫進 `ROADMAP.md` 近期表。逐項見 [`DECISIONS.md`](DECISIONS.md) 同日條目。
+PR #3771–#3841（55 筆）與 issue #3766–#3831（19 筆）逐筆分流，採用 open PR #3830（Windows 無符號連結權限時測試 skip，修前 12 個測試檔失敗或逾時，修後全過）。commit 軸 `25278e7d..b38be6a7` 共 262 個、12 個衝突檔，未採用，水位不動；整棵採用留待下一輪。逐項見 [`DECISIONS.md`](DECISIONS.md) 同日條目。
+
+## 2026-11-03：整棵採用 `b38be6a7`
+
+`25278e7d..b38be6a7` 共 262 個 commit 以三方合併（base `25278e7d`）算出結果樹，12 個衝突檔的產品內容採上游，保留 fork 維護標頭與 fork 專屬的 `AGENTS.md` 三段；水位推進到 `b38be6a7`，PR #3841、issue #3831 不動，open PR #3830 仍在 `monitored`。
+本機 `npm test` 的兩筆失敗不是採用造成（context-profiles 在乾淨 HEAD 同樣逾時、install-state 單檔通過），驗收以 fork CI 為準；逾時原因另列 [`ROADMAP.md`](../../ROADMAP.md) 近期表。逐項見 [`DECISIONS.md`](DECISIONS.md) 同日條目。
