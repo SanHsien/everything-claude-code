@@ -10,7 +10,7 @@
 
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 無 | 唯一的近期項目（本機 validate-context-profiles 逾時）查明為本機檔案系統成本，已移到中期 | — | — | 2026-11-04 cpu-prof 量測（見中期該列） |
+| macOS CI 的 hook 子程序測試間歇失敗：先讓失敗帶診斷再查根因 | run 41762172644（ff03b3e3，job Test macos-latest Node 22.x full）兩次 attempt 失敗點不同，且前一 commit 747d127a 同 job 綠、ff03b3e3 只改 ROADMAP.md，所以是隨機而非回歸。`scripts/hooks/plugin-hook-bootstrap.js:304-311` 對任何執行失敗（`result.error`／`result.signal`／`status === null`）刻意 fail-open 成 exit 0，因此「預期 exit 7 得 0」（attempt 2）最合理的解釋是內層 `spawnNode`（`:182-188`，timeout 30000）的子程序被訊號殺掉或 spawn 出錯，而非 exit code 競態：`spawnSync` 不經事件，沒有 exit／close 或 stdout 未 drain 的問題。attempt 1 的 `scripts/install-apply.test.js` `spawnSync node ETIMEDOUT` 與 `context-prompt-suggestions.test.js:72-78`（timeout 30000）同指向 runner 過載。本機 Windows 無法重現，根因未確定 | 在 CI 再現一次後，從失敗訊息的 stderr／signal／error 判定：(a) 子程序被殺或逾時 → 調高該測試 timeout 或降低該 job 並行度；(b) 有 `[Hook] bootstrap execution failed: <原因>` → 依原因修產品或測試。通過條件：連續 10 次 push 該 job 無此類失敗 | Sonnet（先看診斷再決定，勿憑猜測改產品碼） | run 41762172644；`tests/hooks/plugin-hook-bootstrap.test.js:206,227` 已加診斷訊息（status 斷言附 stderr／signal／error）；attempt 1 的 log 已無法用 `--log-failed` 取得（只剩 attempt 2） |
 
 ## 中期：等條件成立再做
 

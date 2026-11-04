@@ -203,7 +203,7 @@ process.exit(2);
         input: 'raw-input',
       });
 
-      assert.strictEqual(result.status, 2);
+      assert.strictEqual(result.status, 2, `status (stderr: ${JSON.stringify(result.stderr)}, signal: ${result.signal}, error: ${result.error && result.error.message})`);
       assert.strictEqual(result.stdout, 'blocked output');
       assert.strictEqual(result.stderr, 'blocked stderr\n');
     } finally {
@@ -224,7 +224,7 @@ process.exit(7);
         input: 'raw-input',
       });
 
-      assert.strictEqual(result.status, 7);
+      assert.strictEqual(result.status, 7, `status (stderr: ${JSON.stringify(result.stderr)}, signal: ${result.signal}, error: ${result.error && result.error.message})`);
       assert.strictEqual(result.stdout, '');
       assert.strictEqual(result.stderr, 'failure stderr\n');
     } finally {
