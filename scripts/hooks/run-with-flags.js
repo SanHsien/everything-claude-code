@@ -13,7 +13,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { StringDecoder } = require('string_decoder');
 const { isHookEnabled, isDryRun } = require('../lib/hook-flags');
-const { readStdinRaw: readBoundedStdin, resolveMaxStdin } = require('./hook-input');
+const { isBenignStdinPipeError, readStdinRaw: readBoundedStdin, resolveMaxStdin } = require('./hook-input');
 const { buildPreToolUseAdditionalContext } = require('./pretooluse-visible-output');
 const { createHookContextScanner } = require('./hook-input-limits');
 
@@ -337,7 +337,7 @@ async function main() {
   const legacyStdout = sanitizeEcho(resolveLegacySpawnStdout(result));
   if (result.stderr) process.stderr.write(result.stderr);
 
-  if (result.error || result.signal || result.status === null) {
+  if (!isBenignStdinPipeError(result) && (result.error || result.signal || result.status === null)) {
     const failureDetail = result.error ? result.error.message : result.signal ? `terminated by signal ${result.signal}` : 'missing exit status';
     writeStderr(`[Hook] legacy hook execution failed for ${hookId}: ${failureDetail}`);
     exitWithStdout(legacyStdout, 1);

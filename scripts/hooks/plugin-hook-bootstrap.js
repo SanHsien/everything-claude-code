@@ -7,7 +7,7 @@ const { spawnSync } = require('child_process');
 const { ensureAgentDataHomeEnv } = require('../lib/agent-data-home');
 const { normalizePluginRootForPlatform } = require('../lib/resolve-ecc-root');
 const { resolveWindowsBashCandidates } = require('../lib/windows-bash');
-const { readStdinRaw: readBoundedStdin, resolveMaxStdin } = require('./hook-input');
+const { isBenignStdinPipeError, readStdinRaw: readBoundedStdin, resolveMaxStdin } = require('./hook-input');
 
 const { createHookContextScanner } = require('./hook-input-limits');
 
@@ -301,7 +301,9 @@ async function main() {
   passthrough(result);
   writeStderr(result.stderr);
 
-  if (result.error || result.signal || result.status === null) {
+  // EPIPE with a real exit status: the child finished without reading stdin.
+  // Forward its status instead of failing open (which would swallow exit 2 blocks).
+  if (!isBenignStdinPipeError(result) && (result.error || result.signal || result.status === null)) {
     const reason = result.error
       ? result.error.message
       : result.signal

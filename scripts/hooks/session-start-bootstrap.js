@@ -30,7 +30,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { resolveEccRoot } = require('../lib/resolve-ecc-root');
-const { readStdinRaw, resolveMaxStdin } = require('./hook-input');
+const { isBenignStdinPipeError, readStdinRaw, resolveMaxStdin } = require('./hook-input');
 const { exitAfterFlush } = require('./lifecycle-hook-bootstrap');
 
 async function main() {
@@ -76,7 +76,7 @@ async function main() {
     let stderr = typeof result.stderr === 'string' ? result.stderr : '';
     let exitCode = Number.isInteger(result.status) ? result.status : 0;
 
-    if (result.error || result.status === null || result.signal) {
+    if (!isBenignStdinPipeError(result) && (result.error || result.status === null || result.signal)) {
       const reason = result.error
         ? result.error.message
         : result.signal

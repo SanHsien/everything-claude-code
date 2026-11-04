@@ -6,7 +6,7 @@ const { StringDecoder } = require('string_decoder');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
 const { normalizePluginRootForPlatform } = require('../lib/resolve-ecc-root');
-const { readStdinRaw, resolveMaxStdin } = require('./hook-input');
+const { isBenignStdinPipeError, readStdinRaw, resolveMaxStdin } = require('./hook-input');
 const { createHookContextScanner } = require('./hook-input-limits');
 
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -103,7 +103,7 @@ async function main() {
     }
   );
 
-  const failed = result.error || result.status === null || result.signal;
+  const failed = !isBenignStdinPipeError(result) && (result.error || result.status === null || result.signal);
   const stdout = !failed && typeof result.stdout === 'string' && result.stdout !== raw
     ? result.stdout
     : '';

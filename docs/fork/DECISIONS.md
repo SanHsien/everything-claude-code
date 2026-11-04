@@ -473,3 +473,15 @@ commit 軸為 0（上游 main 仍是 `25278e7d`）。PR、issue 一律 `--state 
 **驗收**：`npm ls minimatch --all` 全部解析到 11.0.1；`npm audit --package-lock-only` 由 8 個 moderate 降為 3 個，minimatch 與經它連帶的 `eslint`、`markdownlint-cli` 項目消失，剩下的是不同公告（`glob` 的 GHSA-3g3m-2fjr-6pw4，經 `c8`／`test-exclude`），無 Dependabot 警示。在 yarn 4.9.2 以乾淨副本跑 `yarn install --immutable --mode=skip-build` exit 0，解析到 11.0.1。`eslint .` 與 `markdownlint` 實際以 11.0.1 跑完；`test-exclude` 的 `shouldInstrument` 與 `globSync` 直接呼叫結果正確。`npm test` 完整一輪：8,001 個測試中 7,999 passed／2 failed；`lib/install-state.test.js` 為既有的並行 rename 不穩定，`hooks/context-prompt-suggestions.test.js` 在滿載下因時間限制回空輸出，單檔重跑 10 passed／0 failed，兩者都與 minimatch 無關。`c8` 在本機 Node 26 於 `yargs` 載入階段即失敗（ESM／CJS），未走到 minimatch；覆蓋率以 fork CI 為準。
 
 **移除條件**：`eslint`、`markdownlint-cli`、`test-exclude`／`glob` 的 minimatch 範圍都涵蓋 `>=11.0.1` 時，刪除這兩條 `minimatch` 項目。
+
+## 2026-11-04：hook 子程序的 stdin 管線錯誤不再讓阻擋變成放行
+
+**根因**：`scripts/hooks/plugin-hook-bootstrap.js` 的 `spawnNode` 與 `spawnShell` 用 `spawnSync(..., { input })` 把 stdin 轉給子 hook。子 hook 沒讀 stdin 就寫完輸出並 `exit 2`，父端寫入時撞到已關閉的管線，`spawnSync` 回傳 `result.error`（macOS 為 `EPIPE`，本機 Windows 為 `EOF`），但 `result.status`、`stdout`、`stderr` 其實是子程序的真實結果。bootstrap 看到 `result.error` 就 fail-open 成 `exit 0`，吞掉阻擋語意：一個 blocking hook 會隨機被放行。
+
+**證據**：CI run for `2afe6427`，job Test macos-latest Node 22.x full，在 `tests/hooks/plugin-hook-bootstrap.test.js` 的 `node mode forwards child stdout and exit status for blocking hooks` 加診斷後印出 `stderr: "blocked stderr
+[Hook] bootstrap execution failed: spawnSync .../bin/node EPIPE
+", signal: null`。先前 run 41762172644（`ff03b3e3`）兩次 attempt 失敗點不同，是同一類競態：子程序是否在父端寫完前退出取決於排程。
+
+**修法**：`scripts/hooks/hook-input.js` 新增 `isBenignStdinPipeError(result)`，只在「`error.code` 為 `EPIPE`／`EOF`、`status` 為整數、無 `signal`」時成立；`plugin-hook-bootstrap.js`、`run-with-flags.js`（legacy 子程序路徑）、`lifecycle-hook-bootstrap.js`、`session-start-bootstrap.js` 在判斷執行失敗前先排除這個形狀，改照子程序的 status／stdout／stderr 轉發。spawn 失敗、`ETIMEDOUT`、signal、`status === null` 維持原本的失敗處理。
+
+**驗證**：新增兩個測試。一個用 1 MiB（stdin 上限，遠大於管線緩衝）餵不讀 stdin 就 `exit 2` 的子 hook，斷言 bootstrap 回 `2` 且轉發 stdout；另一個直接測判定函式的邊界。helper 暫時停用時前者在本機 Windows 3 次都紅（`bootstrap execution failed ... EOF`），恢復後 5 次全綠。測試斷言保留診斷訊息。

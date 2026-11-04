@@ -146,9 +146,31 @@ function readStdinRaw(stream = process.stdin, options = {}) {
   });
 }
 
+// Windows libuv surfaces the same closed-pipe write as EOF instead of EPIPE.
+const BENIGN_STDIN_PIPE_CODES = new Set(['EPIPE', 'EOF']);
+
+/**
+ * spawnSync(..., { input }) reports result.error = EPIPE when the child exits
+ * without draining stdin, even though the child ran to completion and
+ * result.status / stdout / stderr are its real outcome. Treating that as an
+ * execution failure turns a blocking hook (exit 2) into a pass. Only that
+ * exact shape is benign: EPIPE (EOF on Windows), a numeric status, no signal. Spawn failures,
+ * timeouts (ETIMEDOUT), signals, and a null status stay failures.
+ */
+function isBenignStdinPipeError(result) {
+  return Boolean(
+    result &&
+    result.error &&
+    BENIGN_STDIN_PIPE_CODES.has(result.error.code) &&
+    Number.isInteger(result.status) &&
+    !result.signal
+  );
+}
+
 module.exports = {
   DEFAULT_MAX_STDIN,
   DEFAULT_STDIN_IDLE_TIMEOUT_MS,
+  isBenignStdinPipeError,
   readStdinRaw,
   resolveMaxStdin,
   resolveStdinIdleTimeout

@@ -14,6 +14,7 @@ const SCRIPT = path.join(__dirname, '..', '..', 'scripts', 'hooks', 'plugin-hook
 const LIFECYCLE_SCRIPT = path.join(__dirname, '..', '..', 'scripts', 'hooks', 'lifecycle-hook-bootstrap.js');
 const { normalizePluginRootForPlatform, withComparisonInput } = require(SCRIPT);
 const { resolveTimeout } = require(LIFECYCLE_SCRIPT);
+const { isBenignStdinPipeError } = require('../../scripts/hooks/hook-input');
 const { resolveWindowsBashCandidates } = require('../../scripts/lib/windows-bash');
 
 function createTempDir() {
@@ -209,6 +210,44 @@ process.exit(2);
     } finally {
       cleanup(root);
     }
+  })) passed++; else failed++;
+
+  if (test('node mode keeps a blocking exit status when the child exits without reading a large stdin (EPIPE)', () => {
+    const root = createTempDir();
+    try {
+      writeFile(root, path.join('scripts', 'block-no-stdin.js'), `
+process.stdout.write('blocked output');
+process.stderr.write('blocked stderr\\n');
+process.exit(2);
+`);
+
+      // 1 MiB (the stdin cap) is far above the OS pipe buffer, so the parent's
+      // write to a child that never reads must hit a closed pipe.
+      const result = run(['node', path.join('scripts', 'block-no-stdin.js')], {
+        root,
+        input: 'x'.repeat(1024 * 1024),
+      });
+
+      assert.strictEqual(result.status, 2, `status (stderr: ${JSON.stringify(result.stderr)}, signal: ${result.signal}, error: ${result.error && result.error.message})`);
+      assert.strictEqual(result.stdout, 'blocked output');
+      assert.ok(result.stderr.includes('blocked stderr'), `stderr: ${JSON.stringify(result.stderr)}`);
+      assert.ok(!result.stderr.includes('bootstrap execution failed'), `stderr: ${JSON.stringify(result.stderr)}`);
+    } finally {
+      cleanup(root);
+    }
+  })) passed++; else failed++;
+
+  if (test('isBenignStdinPipeError accepts only EPIPE/EOF with a numeric status and no signal', () => {
+    const epipe = Object.assign(new Error('spawnSync node EPIPE'), { code: 'EPIPE' });
+    const timeout = Object.assign(new Error('spawnSync node ETIMEDOUT'), { code: 'ETIMEDOUT' });
+    assert.strictEqual(isBenignStdinPipeError({ error: epipe, status: 2, signal: null }), true);
+    assert.strictEqual(isBenignStdinPipeError({ error: epipe, status: 0, signal: null }), true);
+    assert.strictEqual(isBenignStdinPipeError({ error: Object.assign(new Error('EOF'), { code: 'EOF' }), status: 2, signal: null }), true);
+    assert.strictEqual(isBenignStdinPipeError({ error: epipe, status: null, signal: null }), false);
+    assert.strictEqual(isBenignStdinPipeError({ error: epipe, status: 2, signal: 'SIGKILL' }), false);
+    assert.strictEqual(isBenignStdinPipeError({ error: timeout, status: 2, signal: null }), false);
+    assert.strictEqual(isBenignStdinPipeError({ status: 2, signal: null }), false);
+    assert.strictEqual(isBenignStdinPipeError(undefined), false);
   })) passed++; else failed++;
 
   if (test('node mode leaves stdout empty for nonzero child without stdout', () => {
