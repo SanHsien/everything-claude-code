@@ -89,3 +89,7 @@ PR #3771–#3841（55 筆）與 issue #3766–#3831（19 筆）逐筆分流，�
 
 `25278e7d..b38be6a7` 共 262 個 commit 以三方合併（base `25278e7d`）算出結果樹，12 個衝突檔的產品內容採上游，保留 fork 維護標頭與 fork 專屬的 `AGENTS.md` 三段；水位推進到 `b38be6a7`，PR #3841、issue #3831 不動，open PR #3830 仍在 `monitored`。
 本機 `npm test` 的兩筆失敗不是採用造成（context-profiles 在乾淨 HEAD 同樣逾時、install-state 單檔通過），驗收以 fork CI 為準；逾時原因另列 [`ROADMAP.md`](../../ROADMAP.md) 近期表。逐項見 [`DECISIONS.md`](DECISIONS.md) 同日條目。
+
+## 2026-11-04：PR／issue 軸審至 #3866／#3867，commit 軸無新增
+
+`upstream/main` 仍是 `b38be6a7`（behind 0）。PR #3847–#3866（16 筆）與 issue #3843–#3867（8 筆）逐筆分流，全部 OPEN，未提前引用任何一筆；其中 7 個 PR 釘進 `monitored`，#3842、#3851 為 404 缺號。水位 `reviewed_pr_through` 3866、`reviewed_issue_through` 3867。逐項見 [`DECISIONS.md`](DECISIONS.md) 同日條目與 [`ROADMAP.md`](../../ROADMAP.md) 中期表。

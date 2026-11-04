@@ -485,3 +485,46 @@ commit 軸為 0（上游 main 仍是 `25278e7d`）。PR、issue 一律 `--state 
 **修法**：`scripts/hooks/hook-input.js` 新增 `isBenignStdinPipeError(result)`，只在「`error.code` 為 `EPIPE`／`EOF`、`status` 為整數、無 `signal`」時成立；`plugin-hook-bootstrap.js`、`run-with-flags.js`（legacy 子程序路徑）、`lifecycle-hook-bootstrap.js`、`session-start-bootstrap.js` 在判斷執行失敗前先排除這個形狀，改照子程序的 status／stdout／stderr 轉發。spawn 失敗、`ETIMEDOUT`、signal、`status === null` 維持原本的失敗處理。
 
 **驗證**：新增兩個測試。一個用 1 MiB（stdin 上限，遠大於管線緩衝）餵不讀 stdin 就 `exit 2` 的子 hook，斷言 bootstrap 回 `2` 且轉發 stdout；另一個直接測判定函式的邊界。helper 暫時停用時前者在本機 Windows 3 次都紅（`bootstrap execution failed ... EOF`），恢復後 5 次全綠。測試斷言保留診斷訊息。
+
+## 2026-11-04：上游 PR #3847–#3866、issue #3843–#3867 逐筆分流；commit 軸為 0
+
+**範圍**：`git fetch upstream main` 後 `upstream/main` 仍是 `b38be6a7f6350964d59328b52f0624e1d1d552d1`（`git log b38be6a7..upstream/main` 0 筆，`gh api repos/affaan-m/ECC/commits/main` 回同一 SHA），亦即水位之後上游 main 沒有新 commit，**沒有可移植的已合併修正，也就沒有需要記 Co-authored-by 的上游作者**。`python tools/check_upstream_updates.py` 列出 PR 16 筆（#3847–#3866）、issue 8 筆（#3843–#3867）；`gh pr list／issue list --state all` 對照一致：PR 全部 OPEN（其中 #3860 是 draft）、無 MERGED 與 CLOSED，issue 全部 OPEN。編號 #3842、#3851 在 `gh api repos/affaan-m/ECC/issues/<n>` 回 404（issue 與 PR 共用編號空間），沒有內容可審，記為缺號而不是漏審。每筆 PR 以 `gh pr diff` 讀完整 diff（head 見下），照判準八掃新增行：長空白、超過 600 字元、`eval(`／`new Function(`／`globalThis`／`<script`、80 字元以上 base64、零寬與控制字元。命中全部正常：#3847 的 `globalThis.fetch` 預設參數與 Chrome 擴充頁面的 `<script type="module">`、#3853 的 `hooks/hooks.json` 既有長行內命令（7 行）、#3854 的 `globalThis` 重複註冊守衛、#3858 測試裡的 1×1 PNG data URI；無隱藏程式。
+
+**移植：本輪 0 筆**。FORK.md 的判準是 open PR 預設不提前引用，例外限於「本 fork 現在就在痛」。逐筆實查後沒有任何一筆成立：三組有實際缺陷的（#3849／#3858 的祕密遮罩缺口、#3862 的 gateguard 豁免、#3864 的拒絕訊息）都在本 fork 隨附的 hook 裡，但維護者本機沒有安裝 ECC plugin（`~/.claude/plugins/installed_plugins.json` 與 `~/.claude/settings.json` 都查無 ECC 條目，`~/.claude/plugins/cache` 只有 agent-advisor、claude-plugins-official、myr2d2），缺陷不會在維護者的 session 發生；它們也不是已合併的上游修正，不符合「安全修正且本 fork 明確需要」。判定為延後並釘進 `monitored`，上游合併後隨整棵採用抵達。
+
+**PR（16 筆，head 為 2026-11-04 讀 diff 時的值）**
+
+| PR | 判定 | 上游證據 | fork 端證據與理由／重看條件 |
+|---|---|---|---|
+| #3847 `0f628d3c`（+3586，49 檔） | 不適用 | 新增頂層 `chrome-ugc-video-generator/`（Chrome 擴充：Gemini＋Veo） | 產品新功能，fork 無對應目錄也無痛點。重看：上游合併後經整棵採用抵達，不單獨處理 |
+| #3848 `cb531fef` | 不適用 | `scripts/hooks/desktop-notify.js` hunk `@@ -68,15 +68,23 @@`：PowerShell 單引號字串只雙寫 ASCII `'`，但 U+2018–U+201B 也會結束字串（新增 `quotePowerShellString`） | 缺陷屬實：fork `scripts/hooks/desktop-notify.js:77-79` 只替換 ASCII `'`，助理訊息含彎引號即可跳出字串。但這條路徑只在 WSL 執行：`:208` `else if (isWSL)`，`isWSL` 在 `:34-41` 僅 `process.platform === 'linux'` 且 `/proc/version` 含 microsoft 時為真；原生 Windows 與 macOS 都不走 `notifyWindows`。維護者是原生 Windows。重看：維護者開始在 WSL 內使用本 fork 的 Stop hook，或上游合併 |
+| #3849 `4d3e66e0` | 延後（釘 monitored） | `scripts/hooks/post-bash-command-log.js` hunk `@@ -19,9 +19,110 @@`：新增 `sk-`、JWT、PEM 遮罩與 `secret=`／`api_key=` 值的引號感知遮罩 | 缺口屬實：fork `post-bash-command-log.js:21-34` 的 `sanitizeCommand` 只認 `--token`、`Authorization`、AKIA／ASIA、`password`、`ghp_`／`gho_`／`ghs_`／`github_pat_`。實測：以暫存 `CLAUDE_CONFIG_DIR` 呼叫 `run()`，命令 `curl -H "x: sk-ant-api03-…" https://x` 原樣寫進 `bash-commands.log`。只寫本機 `~/.claude/*.log`，不外送，且 hook 未安裝。重看：維護者安裝本 fork 的 hook，或上游合併（對應 issue #3846） |
+| #3853 `1902461a` | 延後（釘 monitored） | `scripts/hooks/plugin-hook-bootstrap.js` hunks `@@ -189,6 +189,24 @@`、`@@ -283,7 +301,10 @@`；`run-with-flags.js` 抽出 `runHook()`；`hooks/hooks.json` 7 條命令改動。每個 hook 省約 85 ms（PR 自量） | 效能優化，非缺陷。它動的正是 fork 今天剛修的區域：`plugin-hook-bootstrap.js:172` `spawnNode`、`:306` 的 `isBenignStdinPipeError` 判斷（`7fcc3a5a`）；in-process 呼叫會改變 hook 的行程隔離與 `process.env` 汙染面，需要重做 EPIPE 回歸。重看：上游合併，或維護者實測 hook 延遲造成困擾 |
+| #3854 `76f8ea4b`（+1756／−565，14 檔） | 不適用 | `.opencode/plugins/ecc-hooks.ts` 改 OpenCode 2.x V2 外掛介面；另動 `scripts/lib/install/apply.js`、`content-transform.js`、`hook-consent.js` | fork 有 `.opencode/plugins/ecc-hooks.ts`、`.opencode/opencode.json:20` 的 `plugin` 條目，但維護者不用 OpenCode；PR 同時動安裝器主流程，不是獨立小修。重看：維護者使用 OpenCode，或上游合併 |
+| #3855 `f408fb12` | 延後 | `README.md` hunk `@@ -1345,7 +1345,7 @@`、`commands/setup-pm.md` hunk `@@ -32,7 +32,7 @@`：fallback 寫 npm | 文件主張屬實：`scripts/lib/package-manager.js:225-236` 無任何設定時直接回 npm，`tests/lib/package-manager.test.js:757` 釘住；fork 文件仍寫「First available」（`README.md:1351`、`commands/setup-pm.md:35`）。README 保持上游英文契約，不自行改字；隨上游合併抵達 |
+| #3857 `1cf547bf` | 不適用 | `rules/common/coding-style.md`、`code-review.md` 各加一條規則 | 規則偏好文字，非缺陷（`coding-style.md:32` 已有同題材的 Avoid speculative generality）；上游合併後抵達 |
+| #3858 `b56f5e77` | 延後（釘 monitored） | `skills/continuous-learning-v2/hooks/observe.sh` hunks `@@ -278,8 +278,10 @@`、`@@ -363,8 +366,10 @@`：兩份 `_SECRET_VALUE_RE` 各加 `sk-` 家族與 JWT 分支 | 缺口屬實：fork `observe.sh:288`、`:373` 兩份 `_SECRET_VALUE_RE` 只有 PEM、`gh*_`、`github_pat_`、AKIA／ASIA 與 DSN。以 fork 的兩個正規式（原樣複製）實測：`output: sk-ant-api03-…`、`output: eyJ….….…` 都不被遮罩。`pre:observe:continuous-learning` 在 fork hooks 內，但 plugin 未安裝。重看：同 #3849 |
+| #3859 `467bd44b`（+710／−69） | 延後（釘 monitored） | 新增 `skills/continuous-learning-v2/scripts/lib/python-cmd.sh`，`observe.sh` hunk `@@ -39,61 +39,20 @@` 與 `detect-project.sh` 改用它；對 Python Install Manager 別名只探測一次並快取 | 場景與本機一致：`command -v python3` 解析到 `%LOCALAPPDATA%\Microsoft\WindowsApps\python3`，該目錄的 `python3.exe` 是 `PythonSoftwareFoundation.PythonManager_26.4.240.0` 的符號連結。fork `observe.sh:69` 起的 `resolve_python_cmd` 只跳過 `AppInstallerPythonRedirector` 殘樁，依 PR 描述的機制，重複 App Installer 更新檢查應會發生（推論，本輪未量測事件記錄）。但只有 observe hook 啟用時才觸發（未安裝），且 PR 是 710 行新增 shell 加快取，沒有對應的本機重現。重看：維護者啟用 continuous-learning 的 observe hook（立即改為提前引用候選），或上游合併 |
+| #3860 `f841420f`（draft，+556／−38） | 延後（釘 monitored，state `draft`） | `.github/workflows/ci.yml`、`tests/run-all.js`、`tests/ci/run-all.test.js` 與 4 個測試檔：Windows 全套 2 個 worker、新增 junction 案例 | 與 #3830（已採用）同在 symlink 測試區，且改全套 runner；PR 自述本機仍有 24 個失敗（EPERM）、未在雲端跑過此版本。fork CI 現況：最近 `ci.yml` run `41777229226`（`7fcc3a5a`）約 28 分鐘、success，沒有逾時。重看：fork 的 windows-latest full lane 逾時或成為瓶頸，且該 PR 已非 draft 並合併 |
+| #3861 `5805fbec` | 不適用 | `package.json` 把 `@opencode-ai/plugin` 由 devDependencies 移到 dependencies，`package-lock.json` 同步 | fork 的 `package.json:567` 在 devDependencies；fork 不發 npm 套件，沒有「消費者缺依賴」的場景；同題材的 #3816（改 optional peer）已在 `monitored`，兩案互相競爭，等上游選定。重看：上游合併其中一案 |
+| #3862 `eb770f26` | 延後（釘 monitored） | `scripts/hooks/gateguard-fact-force.js` hunks `@@ -2010,12 +2010,6 @@`、`@@ -2444,7 +2438,9 @@`、`@@ -2618,7 +2614,7 @@`：移除 `.claude/settings*.json` 免閘門；`tests/hooks/gateguard-fact-force.test.js` Test 16 由「允許」改為「拒絕」 | 缺陷屬實（即 issue #3845）：fork `gateguard-fact-force.js:2013` `isClaudeSettingsPath`、`:2447` 回 `claude-settings` 豁免、`:2621` MultiEdit 子代理路徑同樣豁免。但上游測試與 `skills/gateguard/SKILL.md:258` 明載這是刻意設計（Claude settings files 允許編輯，讓人能關掉 hook），PR 反轉設計取向。重看：維護者安裝本 fork 的 hook，或上游合併 |
+| #3863 `ce800017` | 不適用 | 只動 `ecc2/src/worktree/mod.rs` | fork 不建置、不發佈 ecc2（同 10-28 對 #3755） |
+| #3864 `54989037` | 延後（釘 monitored） | `config-protection.js` hunks `@@ -145,6 +145,10 @@`、`@@ -221,8 +227,10 @@`；`gateguard-fact-force.js` hunk `@@ -115,6 +115,13 @@`；`run-with-flags.js` hunk `@@ -138,9 +138,14 @@`：拒絕訊息預設不再點名關閉 hook 的環境變數，新增 `ECC_SHOW_RECOVERY_HINTS` | 缺陷屬實（即 issue #3844）：fork `config-protection.js:155,225`、`gateguard-fact-force.js:2111`（`ECC_GATEGUARD=off disables this gate`）、`run-with-flags.js:143` 的拒絕文字都直接給出繞過方法。PR 改的是使用者可見的預設文字並新增環境變數，另外把 `run-with-flags.js` 檔案模式由 755 改 644；這是產品判斷，不是自足修正。重看：同 #3862 |
+| #3865 `f5b18672` | 不適用 | `scripts/skills-health.js` 缺 `scripts/lib` 時印補救訊息而非 `MODULE_NOT_FOUND` 堆疊（PR 內註解引用 #3259） | 只在 marketplace 託管安裝缺 `scripts/lib` 時發生（同 11-02 對 #3793 的判斷）；fork 完整 checkout 有 `scripts/lib/skill-evolution/`（`health.js`、`dashboard.js`、`index.js`），`scripts/skills-health.js:4` 的 require 成功。重看：維護者以 plugin 安裝本 fork |
+| #3866 `9142afa7` | 延後 | `skills/gateguard/SKILL.md` hunks `@@ -691,7 +691,9 @@`、`@@ -703,7 +705,7 @@`：改正「hook 讀 `.gateguard.yml`」的說法 | 文件主張屬實：`grep -rn gateguard.yml scripts` 無任何命中，fork `skills/gateguard/SKILL.md:694,706` 的敘述不符實況。僅文件，隨上游合併抵達 |
+
+**issue（8 筆，全部 OPEN）**
+
+| issue | 判定 | 理由與重看條件 |
+|---|---|---|
+| #3843、#3852 | 不收 | 兩筆 `[Copilot]` 都是未填的範本（#3843 只有勾選框、#3852 只有一個 repo 網址），沒有可處理項目（同 11-02 的 #3782、#3785 類型） |
+| #3844 | 對應 PR #3864 | 缺陷屬實，見上表；已隨 #3864 釘在 `monitored` |
+| #3845 | 對應 PR #3862 | 同上；注意上游自己的測試與 skill 文件把它寫成刻意行為 |
+| #3846 | 對應 PR #3849、#3858 | 缺口以暫存目錄實測重現（命令記錄）與正規式實測重現（observe）；兩個 PR 都已釘 |
+| #3850 | 不收 | `[Feedback]`：建議替 `intent-driven-development` skill 補一個「對照 issue 描述與留言進度」的範例；自述「ECC 的介入程度未知」，是使用回饋不是缺陷，與 fork 維護線無關 |
+| #3856 | 不收 | `[Feedback]`：委派資料審查時應限縮輸出欄位；自述「未重現 ECC 的弱點，未檢視原始結果」，無可驗證的 ECC 行為 |
+| #3867 | 延後 | 缺陷在 fork 成立的條件齊備：fork `scripts/hooks/session-start.js:733` 同樣把前次 session 摘要包進「HISTORICAL REFERENCE ONLY — NOT LIVE INSTRUCTIONS」再注入，issue 描述 classifier 通知被記成使用者任務後自我延續。屬 session-start／session-end 產品行為，維護者沒裝 plugin，不在本機發生。issue 自附 workaround：`ECC_SESSION_START_CONTEXT=off`。重看：維護者安裝本 fork 的 SessionStart hook，或上游出修正 |
+
+**monitored 新增 7 筆**：`pr#3849`、`pr#3853`、`pr#3858`、`pr#3859`、`pr#3860`（state `draft`）、`pr#3862`、`pr#3864`，各釘上表 head。#3855、#3866 是純文件、#3847／#3848／#3854／#3857／#3861／#3863／#3865 判為不適用，不釘；它們若被上游合併，會經 commit 軸出現。
+
+**水位**：commit 軸 `b38be6a7f6350964d59328b52f0624e1d1d552d1`（不變，behind 0）、PR #3866、issue #3867、日期 2026-11-04。PR／issue 軸本輪連續且逐筆有證據（#3842、#3851 為 404 缺號，見範圍段）。
