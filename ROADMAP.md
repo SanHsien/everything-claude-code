@@ -10,12 +10,13 @@
 
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 追查 Windows 本機 `scripts/ci/validate-context-profiles.js` 逾 60 秒的原因 | `tests/ci/context-profiles.test.js` 在這台機器於乾淨 HEAD 以舊的 30 秒上限同樣 `ETIMEDOUT`，整合後以 60 秒上限仍逾時，而 fork CI（windows-latest）先前能過；本機閘門因此無法全綠 | 找出本機比 CI 慢的原因（例如逐 profile／target 投影的檔案 I/O、防毒掃描或磁碟）並量測前後耗時；除非有依據，不放寬 timeout | Codex | docs/fork/DECISIONS.md 2026-11-03 條目；`tests/ci/context-profiles.test.js` |
+| 無 | 唯一的近期項目（本機 validate-context-profiles 逾時）查明為本機檔案系統成本，已移到中期 | — | — | 2026-11-04 cpu-prof 量測（見中期該列） |
 
 ## 中期：等條件成立再做
 
 | 項目 | 觸發條件 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
+| 降低 `scripts/ci/validate-context-profiles.js` 在逐檔掃描成本高的 Windows 主機上的耗時（本機 2026-11-04 兩次實測 44.0 秒、55.2 秒，`tests/ci/context-profiles.test.js:12` 上限 60 秒，餘裕很薄） | 該測試在 fork CI（windows-latest）逾時；或本機逾時變成常態，且確認 Defender 排除該目錄後仍超過 60 秒 | 先在 CI 或排除掃描後的本機量同一支 `--cpu-prof`；若要改碼，只在 `validate()` 內共用單一 registry／reader 並證明不削弱 `context-profile-support.js` 的身分重驗，量測前後耗時；不放寬 timeout 除非有此量測 | Codex | 2026-11-04 實測：本機環境問題，非程式缺陷。`--cpu-prof` 52.7 秒中 `lstat` 24.4 秒、`open` 16.2 秒；674,650 次 `lstatSync`（約 33 µs／次）、21,973 次 `openSync`；空檔微基準 `lstat` 27 µs、`open`+`close` 530 µs（repo 內與 `%TEMP%` 相同）；Defender 即時防護開啟，排除清單無權限讀取。放大來源：`scripts/lib/context-profiles.js:15,102` 每次編譯新建 reader 並重載 registry，34 個投影各重讀約 646 個來源檔；`scripts/lib/context-profile-support.js:62-84` 每檔 `lstat` 祖先鏈重驗（刻意的 TOCTOU 防護，不動）。docs/fork/DECISIONS.md 2026-11-03 條目 |
 | 重評 compact 視窗與其他未採用產品提案 | 實際 session 出現 CLAUDE_CODE_AUTO_COMPACT_WINDOW，或上游合併相關修正；其他提案命中既有裁決條件 | 對照實際設定與上游依據後補回歸；compact 判斷不誤用觸發值，產品測試不呼叫真實付費 CLI，採用理由可追溯 | Codex | docs/fork/DECISIONS.md:390、393-394；tests/scripts/claw.test.js |
 
 ## 刻意不做
