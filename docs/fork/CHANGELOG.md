@@ -5,6 +5,11 @@
 [`affaan-m/ECC`](https://github.com/affaan-m/ECC)
 的產品演進見其自身 [`CHANGELOG.md`](../../CHANGELOG.md) 與 [`docs/fork/UPSTREAM.md`](UPSTREAM.md) 的審查清冊。
 
+## 2026-11-05
+
+- 上游 PR／issue 分流水位推進至 #3878／#3877，commit 水位仍為 `b38be6a7`；逐筆 SHA、fork 行號與重看條件記在 DECISIONS。
+- 重審移動的 monitored 釘點；#3859 關閉並由 #3871 取代，保留歷史釘點，對新的條件式修正新增監看。沒有提前移植未合併產品碼。
+
 ## 2026-11-04
 
 - 上游 PR #3847–#3866 與 issue #3843–#3867 逐筆分流（上游 main 無新 commit，未移植任何項目）；7 個條件式 PR 釘進 `monitored`，PR／issue 水位推進到 3866／3867，commit 水位仍為 `b38be6a7`。

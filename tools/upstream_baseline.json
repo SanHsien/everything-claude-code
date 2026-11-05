@@ -2,10 +2,10 @@
   "repo": "https://github.com/affaan-m/ECC.git",
   "branch": "main",
   "reviewed_through": "b38be6a7f6350964d59328b52f0624e1d1d552d1",
-  "reviewed_date": "2026-11-04",
-  "notes": "2026-08-28 首次同步：d8409a4 之後的 56 個上游 commit 以 merge 整批取用——本 fork 相對起點只改 32 檔，與上游動到的 70 檔僅 3 個重疊且已自動合併、overlay 實查仍在。PR/issue 兩個面向本檔先前完全沒有（不是查過沒發現，是根本沒查），本輪補上並以 --state all 記水位；上游高速開發（PR 已到 #2891），取用方式是合併 upstream/main，已合併的 PR 隨合併進來，open PR 預設不提前引用。逐項判準與兩筆觀察中的 PR 記在 FORK.md。 2026-08-30：PR 水位 2891 → 2904、issue 2886 → 2906。commit 水位**不推進**——上游累積 118 個 commit 尚未逐筆審。本輪採用兩筆實錯：hooks.json 的 matcher \"*\" 是無效 regex（自驗 new RegExp('*') 丟 Nothing to repeat），16 組 hook 含全部 7 個 Stop 從來沒載入過，已改 .* 並讓 validate-hooks.js 真的編譯 matcher；pr 與 prp-pr 描述逐位元組相同、選擇時無法決定，已改寫並讓 validate-commands.js 擋重複描述。#2897 已涵蓋（本 fork 的 block-no-verify 實測不誤判引號內文字）。逐項見 docs/fork/DECISIONS.md 同日條目。 2026-09-30：556 commits／271 PRs／91 issues 分組判定完成，全部 adoption pending 或 follow-upstream，未採用任何 commit（origin/main 已於 2026-09-27 壓成單一 root commit，與上游無共同祖先）。逐項見 docs/fork/DECISIONS.md 同日條目。 2026-10-06：整棵採用 ef648e01（559 commits），PR/issue 水位未推進，見 docs/fork/DECISIONS.md 同日條目。 2026-10-25：整棵採用 90606c83（ef648e01 之後 914 commits），以三方合併（base ef648e01）取用；PR #3279–#3711 與 issue #3280–#3722 逐筆掃過標題，未提前引用任何 open PR，見 docs/fork/DECISIONS.md 同日條目。 2026-10-26：整棵採用 25278e7d（90606c83 之後 102 commits），以三方合併（base 90606c83）取用；其中 hooks.json 等的行內解析器 WSL 片段含反斜線，在原生 Windows 的 bash -c 下讓全部 27 條 hook 出現 SyntaxError（上游 issue 3746），已改成無反斜線的等價寫法並加回歸測試；PR #3723–#3744 與 issue #3742–#3746 逐筆分流，未提前引用任何 open PR，見 docs/fork/DECISIONS.md 同日條目。 2026-10-28：PR #3747–#3764 與 issue #3754–#3765 逐筆分流；提前引用 open PR #3764（claw 測試在維護者機器會真的呼叫 claude CLI），其餘附重看條件，見 docs/fork/DECISIONS.md 同日條目。 2026-11-02：PR #3771–#3841 與 issue #3766–#3831 逐筆分流，採用 open PR #3830（測試在無符號連結權限的 Windows 上 skip，修前 12 個測試檔失敗或逾時）；commit 軸 262 個（25278e7d..b38be6a7，12 個衝突檔）延後整棵採用，水位不動，見 docs/fork/DECISIONS.md 同日條目與 ROADMAP.md。 2026-11-03：整棵採用 b38be6a7（25278e7d 之後 262 commits），以三方合併（base 25278e7d）取用，12 個衝突檔的產品內容採上游；fork CI（windows-latest）為驗收閘門，本機 context-profiles 逾時在乾淨 HEAD 同樣出現，PR/issue 水位仍為 3841/3831，#3830 上游尚未合併，仍在 monitored，見 docs/fork/DECISIONS.md 同日條目。 2026-11-04：上游 main 仍是 b38be6a7（behind 0，無已合併 commit 可移植）；PR #3847–#3866 與 issue #3843–#3867 逐筆分流（#3842、#3851 為 404 缺號），全部 OPEN、未提前引用任何 PR；判為延後的 7 筆（#3849、#3853、#3858、#3859、#3860、#3862、#3864）釘進 monitored，見 docs/fork/DECISIONS.md 同日條目。",
-  "reviewed_pr_through": 3866,
-  "reviewed_issue_through": 3867,
+  "reviewed_date": "2026-11-05",
+  "notes": "2026-08-28 首次同步：d8409a4 之後的 56 個上游 commit 以 merge 整批取用——本 fork 相對起點只改 32 檔，與上游動到的 70 檔僅 3 個重疊且已自動合併、overlay 實查仍在。PR/issue 兩個面向本檔先前完全沒有（不是查過沒發現，是根本沒查），本輪補上並以 --state all 記水位；上游高速開發（PR 已到 #2891），取用方式是合併 upstream/main，已合併的 PR 隨合併進來，open PR 預設不提前引用。逐項判準與兩筆觀察中的 PR 記在 FORK.md。 2026-08-30：PR 水位 2891 → 2904、issue 2886 → 2906。commit 水位**不推進**——上游累積 118 個 commit 尚未逐筆審。本輪採用兩筆實錯：hooks.json 的 matcher \"*\" 是無效 regex（自驗 new RegExp('*') 丟 Nothing to repeat），16 組 hook 含全部 7 個 Stop 從來沒載入過，已改 .* 並讓 validate-hooks.js 真的編譯 matcher；pr 與 prp-pr 描述逐位元組相同、選擇時無法決定，已改寫並讓 validate-commands.js 擋重複描述。#2897 已涵蓋（本 fork 的 block-no-verify 實測不誤判引號內文字）。逐項見 docs/fork/DECISIONS.md 同日條目。 2026-09-30：556 commits／271 PRs／91 issues 分組判定完成，全部 adoption pending 或 follow-upstream，未採用任何 commit（origin/main 已於 2026-09-27 壓成單一 root commit，與上游無共同祖先）。逐項見 docs/fork/DECISIONS.md 同日條目。 2026-10-06：整棵採用 ef648e01（559 commits），PR/issue 水位未推進，見 docs/fork/DECISIONS.md 同日條目。 2026-10-25：整棵採用 90606c83（ef648e01 之後 914 commits），以三方合併（base ef648e01）取用；PR #3279–#3711 與 issue #3280–#3722 逐筆掃過標題，未提前引用任何 open PR，見 docs/fork/DECISIONS.md 同日條目。 2026-10-26：整棵採用 25278e7d（90606c83 之後 102 commits），以三方合併（base 90606c83）取用；其中 hooks.json 等的行內解析器 WSL 片段含反斜線，在原生 Windows 的 bash -c 下讓全部 27 條 hook 出現 SyntaxError（上游 issue 3746），已改成無反斜線的等價寫法並加回歸測試；PR #3723–#3744 與 issue #3742–#3746 逐筆分流，未提前引用任何 open PR，見 docs/fork/DECISIONS.md 同日條目。 2026-10-28：PR #3747–#3764 與 issue #3754–#3765 逐筆分流；提前引用 open PR #3764（claw 測試在維護者機器會真的呼叫 claude CLI），其餘附重看條件，見 docs/fork/DECISIONS.md 同日條目。 2026-11-02：PR #3771–#3841 與 issue #3766–#3831 逐筆分流，採用 open PR #3830（測試在無符號連結權限的 Windows 上 skip，修前 12 個測試檔失敗或逾時）；commit 軸 262 個（25278e7d..b38be6a7，12 個衝突檔）延後整棵採用，水位不動，見 docs/fork/DECISIONS.md 同日條目與 ROADMAP.md。 2026-11-03：整棵採用 b38be6a7（25278e7d 之後 262 commits），以三方合併（base 25278e7d）取用，12 個衝突檔的產品內容採上游；fork CI（windows-latest）為驗收閘門，本機 context-profiles 逾時在乾淨 HEAD 同樣出現，PR/issue 水位仍為 3841/3831，#3830 上游尚未合併，仍在 monitored，見 docs/fork/DECISIONS.md 同日條目。 2026-11-04：上游 main 仍是 b38be6a7（behind 0，無已合併 commit 可移植）；PR #3847–#3866 與 issue #3843–#3867 逐筆分流（#3842、#3851 為 404 缺號），全部 OPEN、未提前引用任何 PR；判為延後的 7 筆（#3849、#3853、#3858、#3859、#3860、#3862、#3864）釘進 monitored，見 docs/fork/DECISIONS.md 同日條目。 2026-11-05：PR／issue 分流與移動 monitored 的重審、SHA／檔案行號及重看條件見 docs/fork/DECISIONS.md 同日條目；未移植產品碼。",
+  "reviewed_pr_through": 3878,
+  "reviewed_issue_through": 3877,
   "decision_log": "docs/fork/DECISIONS.md",
   "monitored": [
     {
@@ -55,7 +55,7 @@
     },
     {
       "item": "pr#3849",
-      "head": "4d3e66e0ab93189e5fd8de700b97f4586cab5a2e",
+      "head": "71084e055545dae6c11102d079788b6a04c33a32",
       "state": "open"
     },
     {
@@ -65,13 +65,13 @@
     },
     {
       "item": "pr#3858",
-      "head": "b56f5e77b0bf3d1234100378eeaa41ed471daa97",
+      "head": "0cc28648188d2cd03e0791d93b1b26efbbd85fdb",
       "state": "open"
     },
     {
       "item": "pr#3859",
       "head": "467bd44b6760eaacf41a098d4ffff77b7c1d6d4c",
-      "state": "open"
+      "state": "closed"
     },
     {
       "item": "pr#3860",
@@ -80,13 +80,48 @@
     },
     {
       "item": "pr#3862",
-      "head": "eb770f263f85d3a2d847b7167e4792d3f6d08488",
+      "head": "01c2426b2ce80354baaa31fd134f1772e4007332",
       "state": "open"
     },
     {
       "item": "pr#3864",
-      "head": "54989037b4ee445af37cec0546700e54183de4dc",
+      "head": "464440aa5134311f327c4254d35e286b6af43037",
       "state": "open"
+    },
+    {
+      "item": "pr#3870",
+      "head": "a08d5da8c9017a891ff7c142b6176373724a2b01",
+      "state": "open"
+    },
+    {
+      "item": "pr#3871",
+      "head": "697c1d0e71b6eca050e5522ff8d36351d7f34cb2",
+      "state": "open"
+    },
+    {
+      "item": "pr#3872",
+      "head": "cfe051de5f28684bbac235277e37f9457098867d",
+      "state": "open"
+    },
+    {
+      "item": "pr#3873",
+      "head": "3d7034872ea028e5999aadc48e68e2c622892f3d",
+      "state": "open"
+    },
+    {
+      "item": "pr#3874",
+      "head": "3d8a6a140143897ff630cd892652f92ed0170c82",
+      "state": "open"
+    },
+    {
+      "item": "pr#3876",
+      "head": "d64b34137b2b18d60b9a6728e4533fcf5f2d0a5f",
+      "state": "open"
+    },
+    {
+      "item": "pr#3878",
+      "head": "1d15f4d0bfe5f9f9fe63eb5f5a2af9a6bbfc4cbe",
+      "state": "closed"
     }
   ]
 }

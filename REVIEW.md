@@ -103,3 +103,10 @@ node scripts/ci/check-unicode-safety.js          → Unicode safety check passed
 
 - 完整 `npm test` exit 1：7,998 passed／2 failed，456 個檔通過／2 個檔失敗。context-profile 的 60 秒子程序上限單檔重跑仍為 `ETIMEDOUT`（60.03 秒，2 passed／1 failed，exit 1）；安裝狀態並行 rename 的 `EPERM` 單檔重跑恢復為 10 passed／0 failed（exit 0）。未變更測試上限或無關產品碼。
 - `npm ci --ignore-scripts` exit 0，依賴稽核報 8 個 moderate；依賴警示沒有以整合通過代替處置。commit 水位推進到 `b38be6a7`（262 個 commit 全數審過並整合）；PR／issue 水位維持 #3841／#3831，兩筆本機失敗皆非採用造成，驗收以 fork CI（windows-latest）為準。
+
+## 2026-11-05：上游分流與條件式監看重審
+
+- 審查起點為 fork `db0d5fb628944b4ccb5e2ac5c411684dad7fb312`；PR #3868–#3878、issue #3875／#3877 的來源與 fork 行號、狀態、技術與 Windows 判斷見 [DECISIONS](docs/fork/DECISIONS.md)。沒有已合併且獨立的修正可移植，產品碼與測試保持原樣，因此無移植回歸的先紅後綠或 Co-authored-by 作者清單。
+- #3849、#3858、#3862、#3864 讀相對舊 head 的完整 compare patch 後重釘；#3859 的關閉理由為作者以 #3871 取代，保留 closed 釘點與替代案監看。新增條件式修正釘點，既有其他監看不改。
+- PR／issue 水位連續覆蓋共享編號 #3868–#3878；沒有缺號。strict 由 exit 1 轉為 exit 0，commit 軸仍為 `b38be6a7`；可變的未審剩餘量以工具報告為準。
+- ROADMAP 近期表原無指定列，維持「無」；中期待辦改為依 baseline 監看釘點與 DECISIONS 的條件重審，避免繼續把已關閉的 #3859 寫成 open。

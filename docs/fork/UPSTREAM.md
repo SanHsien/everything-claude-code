@@ -93,3 +93,7 @@ PR #3771–#3841（55 筆）與 issue #3766–#3831（19 筆）逐筆分流，�
 ## 2026-11-04：PR／issue 軸審至 #3866／#3867，commit 軸無新增
 
 `upstream/main` 仍是 `b38be6a7`（behind 0）。PR #3847–#3866（16 筆）與 issue #3843–#3867（8 筆）逐筆分流，全部 OPEN，未提前引用任何一筆；其中 7 個 PR 釘進 `monitored`，#3842、#3851 為 404 缺號。水位 `reviewed_pr_through` 3866、`reviewed_issue_through` 3867。逐項見 [`DECISIONS.md`](DECISIONS.md) 同日條目與 [`ROADMAP.md`](../../ROADMAP.md) 中期表。
+
+## 2026-11-05：PR／issue 軸審至 #3878／#3877，並重審移動的 monitored
+
+逐筆判定 PR #3868–#3878 與 issue #3875／#3877；#3868 關閉未合併，#3878 作者無說明關閉（Windows codex.cmd shim 缺陷，未合併，釘 closed 監看），其餘新 PR 為 open，沒有提前移植。commit 軸仍是 `b38be6a7`；以唯讀 GitHub main SHA 核對，沒有 fetch／pull。#3859 關閉並由 #3871 取代；更新 #3849、#3858、#3862、#3864 的 head，對相關新案釘 monitored 與重看條件。完整 SHA、上游與 fork 行號、裁決見 [DECISIONS](DECISIONS.md) 同日條目。
