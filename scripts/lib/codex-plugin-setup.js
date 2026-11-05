@@ -3,6 +3,7 @@
 const { execFile: nodeExecFile } = require('child_process');
 const path = require('path');
 const { normalizeGitHubGitOrigin } = require('./github-origin');
+const { resolveCodexCommand } = require('./astra-review/codex');
 
 const CODEX_PLUGIN_ID = 'ecc@ecc';
 const OFFICIAL_MARKETPLACE_NAME = 'ecc';
@@ -159,17 +160,34 @@ function isCommandTimeout(error, killSignal = 'SIGKILL') {
     || (error?.killed === true && error?.signal === killSignal);
 }
 
+/**
+ * Choose how to launch the Codex CLI. On Windows the npm-installed CLI is a
+ * codex.cmd shim that execFile cannot spawn without a shell, so the default
+ * resolver maps it to node + the shim's JS entry point. An explicitly
+ * configured command is used as-is.
+ * @param {object} env Environment used for PATH lookup.
+ * @param {{command?: string}} options
+ * @param {{command?: string, resolveCodexCommand?: Function}} dependencies
+ * @returns {{command: string, prefixArgs: string[]}}
+ */
+function resolveCodexLauncher(env, options, dependencies) {
+  const explicitCommand = dependencies.command || options.command;
+  if (explicitCommand) return { command: explicitCommand, prefixArgs: [] };
+  return (dependencies.resolveCodexCommand || resolveCodexCommand)({ env });
+}
+
 async function runCodexCommand(args, options = {}, dependencies = {}) {
-  const command = dependencies.command || options.command || 'codex';
+  const env = options.env || process.env;
+  const launcher = resolveCodexLauncher(env, options, dependencies);
   const execFile = dependencies.execFile || nodeExecFile;
   const argv = [...args];
   const timeoutMs = options.timeoutMs ?? PROVIDER_COMMAND_TIMEOUT_MS;
   const killSignal = 'SIGKILL';
   try {
-    return await executeFile(execFile, command, argv, {
+    return await executeFile(execFile, launcher.command, [...launcher.prefixArgs, ...argv], {
       cwd: options.cwd || process.cwd(),
       encoding: 'utf8',
-      env: options.env || process.env,
+      env,
       maxBuffer: MAX_OUTPUT_BYTES,
       killSignal,
       shell: false,

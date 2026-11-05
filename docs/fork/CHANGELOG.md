@@ -7,6 +7,7 @@
 
 ## 2026-11-05
 
+- 修 Windows 上 `ecc install --guided --harness codex` 因 `codex.cmd` shim 無法被 `execFile` 啟動而失敗：plugin setup 重用 `resolveCodexCommand`（node 加 `codex.js`，不開 shell），並補專案本機 `.bin` 版面與回歸測試；採用上游 #3878 的做法，見 DECISIONS 同日條目。
 - 上游 PR／issue 分流水位推進至 #3878／#3877，commit 水位仍為 `b38be6a7`；逐筆 SHA、fork 行號與重看條件記在 DECISIONS。
 - 重審移動的 monitored 釘點；#3859 關閉並由 #3871 取代，保留歷史釘點，對新的條件式修正新增監看。沒有提前移植未合併產品碼。
 
