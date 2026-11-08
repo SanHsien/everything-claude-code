@@ -97,3 +97,9 @@ PR #3771–#3841（55 筆）與 issue #3766–#3831（19 筆）逐筆分流，�
 ## 2026-11-05：PR／issue 軸審至 #3878／#3877，並重審移動的 monitored
 
 逐筆判定 PR #3868–#3878 與 issue #3875／#3877；#3868 關閉未合併，#3878 作者無說明關閉（Windows codex.cmd shim 缺陷，未合併，釘 closed 監看），其餘新 PR 為 open，沒有提前移植。commit 軸仍是 `b38be6a7`；以唯讀 GitHub main SHA 核對，沒有 fetch／pull。#3859 關閉並由 #3871 取代；更新 #3849、#3858、#3862、#3864 的 head，對相關新案釘 monitored 與重看條件。完整 SHA、上游與 fork 行號、裁決見 [DECISIONS](DECISIONS.md) 同日條目。
+
+## 2026-11-08：採用上游 `d2ef268`（b38be6a7 之後 6 commits），PR／issue 軸審至 #3895／#3896，補審 3fea0a00
+
+`b38be6a7..d2ef2680` 共 6 個 commit（PR #3650：`4062ffbb`、`3b31c2af`、`bac1e475`、`688cefe9`、`6cf1eb55`、`d2ef2680`，動 `.github/PR_MODERATION.md`、`.github/workflows/pr-burst-guard.yml`、`CONTRIBUTING.md`、`scripts/ci/pr-burst-guard.js`、`tests/ci/pr-burst-guard*.test.js`）整批採用，保留 fork 的 `if: github.repository == 'affaan-m/ECC'` 守衛與 CONTRIBUTING overlay；測試 31 項全過。commit 水位推進到 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**。
+PR #3880–#3895（10 筆）與 issue #3879–#3896（8 筆）逐筆分流，未提前引用任何 open PR；重審移動的 6 筆 monitored（pr#3816 closed、pr#3849/3858/3870/3871/3876 更新 head），新釘 7 筆（pr#3880、#3881、#3882 [draft]、#3884、#3885、#3890、#3894）。水位 `reviewed_pr_through` 3895、`reviewed_issue_through` 3896。
+補審 3fea0a00：比對 fork commit 與上游 open PR #3830（head fbd14b44，未改版）diff 忠實套用（測試碼僅 1 行 context 差異，語意 100% 吻合）。確認 fd7c834f、db0d5fb6 記載與實際一致。詳見 [`DECISIONS.md`](DECISIONS.md) 同日條目。

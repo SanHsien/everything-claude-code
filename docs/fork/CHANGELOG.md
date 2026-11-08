@@ -5,6 +5,13 @@
 [`affaan-m/ECC`](https://github.com/affaan-m/ECC)
 的產品演進見其自身 [`CHANGELOG.md`](../../CHANGELOG.md) 與 [`docs/fork/UPSTREAM.md`](UPSTREAM.md) 的審查清冊。
 
+## 2026-11-08
+
+- 採用上游 PR #3650 抵達 main 的 6 個 commit（`b38be6a7..d2ef2680`，tip `d2ef2680`）：移植 open PR contributor cap 機制的 CI 產品碼（`.github/PR_MODERATION.md`、`scripts/ci/pr-burst-guard.js`、`tests/ci/pr-burst-guard*.test.js`），`.github/workflows/pr-burst-guard.yml` 引入 `queue: max` 並嚴格保留 `github.repository == 'affaan-m/ECC'` 守衛，`CONTRIBUTING.md` 套用 open PR cap 文字更新並保留 fork overlay；commit 水位推進至 `d2ef2680`。
+- 上游 PR／issue 分流水位推進至 #3895／#3896，未提前引用任何 open PR；逐筆 SHA、判定理由與重看條件記在 DECISIONS。
+- 重審移動的 6 筆 monitored 釘點（pr#3816 closed 未合併、pr#3849/3858/3870/3871/3876 更新 head），新釘 7 筆條件式 PR（pr#3880、#3881、#3882 [draft]、#3884、#3885、#3890、#3894），釘點總數為 30 筆。
+- 補審 commit `3fea0a00`（2026-11-02 提前採用 open PR #3830）：比對 fork commit 與上游 open PR #3830 diff 忠實套用（測試碼僅 1 行 context 差異，語意 100% 吻合）；覆核 `fd7c834f`、`db0d5fb6` 記載與實際一致。
+
 ## 2026-11-05
 
 - 修 Windows 上 `ecc install --guided --harness codex` 因 `codex.cmd` shim 無法被 `execFile` 啟動而失敗：plugin setup 重用 `resolveCodexCommand`（node 加 `codex.js`，不開 shell），並補專案本機 `.bin` 版面與回歸測試；採用上游 #3878 的做法，見 DECISIONS 同日條目。

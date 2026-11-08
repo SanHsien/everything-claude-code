@@ -567,3 +567,69 @@ commit 軸為 0（上游 main 仍是 `25278e7d`）。PR、issue 一律 `--state 
 ## 2026-11-05：修 Windows codex.cmd shim 無法啟動（上游 #3878 描述的缺陷）
 
 fork 自行修正，採用上游 PR #3878（作者 jin0205，已關閉未合併）的做法：`scripts/lib/codex-plugin-setup.js` 的 `runCodexCommand` 改用 `astra-review/codex.js` 既有的 `resolveCodexCommand`，在 Windows 把 npm 的 `codex.cmd` shim 解析成 `node` 加 `codex.js` 入口，維持 `shell: false`，不碰 CVE-2024-27980 的 `.cmd` 限制。明確指定的 `command` 原樣使用；錯誤回報的 argv 不含 launcher prefix。`resolveCodexCommand` 另補專案本機 `node_modules/.bin` 的同層入口（全域版面優先）。回歸測試：舊碼紅（launcher 與 shim 兩案失敗）、新碼綠（`codex-plugin-setup` 27 項、`astra-review-codex` 27 項皆 0 失敗）。Co-authored-by：jin0205。上表 #3878 列「不移植」的裁決改為已採用；釘點保留，上游若以他案合併再比對。
+
+## 2026-11-08：補審 3fea0a00；採用上游 PR #3650 抵達 main 的 6 個 commit（tip d2ef2680）；PR #3880–#3895、issue #3879–#3896 分流
+
+### 一、補審 3fea0a00（2026-11-02 提前採用上游 open PR #3830）與分流紀錄覆核
+- **PR #3830 現況與比對**：以 `gh pr view 3830 --repo affaan-m/ECC` 查詢，狀態為 `OPEN`，`headRefOid` 仍為 `fbd14b443190a8f3ef4ba0c73eca0be1525db6d6`，未改版、未合併。提取 `gh pr diff 3830` 與 commit `3fea0a00` 中 `tests/` 的 diff 比對，除 `tests/scripts/codex-hooks.test.js` 因 fork 既有大小寫感知 overlay 有一行 context 差異外，所有 14 個測試檔的 patch hunk 完全忠實套用（100% 語意一致）。上游未變動，fork 維持既有套用，仍在 `monitored`。
+- **分流 commit 覆核**：`fd7c834f`（2026-11-05）與 `db0d5fb6`（2026-11-04）記載之 PR／issue 水位、monitored 釘點及處置與實際 commit 內容完全一致。
+
+### 二、commit 軸：採用 `b38be6a7..d2ef2680` 共 6 個 commit（上游 PR #3650）
+- **逐筆 commit 與 numstat 實算**（`git show <sha> --numstat`）：
+  1. `4062ffbb` fix(ci): grandfather open PRs under contributor cap（`.github/PR_MODERATION.md` +15/-10、`.github/workflows/pr-burst-guard.yml` +3/-2、`CONTRIBUTING.md` +3/-2、`scripts/ci/pr-burst-guard.js` +8/-5、`tests/ci/pr-burst-guard-workflow.test.js` +55/-2、`tests/ci/pr-burst-guard.test.js` +44/-7）
+  2. `3b31c2af` test(ci): reject duplicate burst lock requests（`tests/ci/pr-burst-guard-workflow.test.js` +1/-0）
+  3. `bac1e475` fix(ci): apply open PR cap to every author（`.github/PR_MODERATION.md` +6/-3、`CONTRIBUTING.md` +4/-3、`scripts/ci/pr-burst-guard.js` +26/-16、`tests/ci/pr-burst-guard-workflow.test.js` +23/-10、`tests/ci/pr-burst-guard.test.js` +35/-10）
+  4. `688cefe9` docs(ci): clarify open PR grandfathering（`CONTRIBUTING.md` +4/-3、`tests/ci/pr-burst-guard-workflow.test.js` +8/-7）
+  5. `6cf1eb55` chore(ci): sync main before PR cap integration（作者分支整合上游 main 節點，淨變更見 merge commit）
+  6. `d2ef2680` Merge pull request #3650 from haelyra/fix/pr-open-cap-grandfather（淨變更總計：`.github/PR_MODERATION.md` +19/-11、`.github/workflows/pr-burst-guard.yml` +3/-2、`CONTRIBUTING.md` +6/-3、`scripts/ci/pr-burst-guard.js` +29/-16、`tests/ci/pr-burst-guard-workflow.test.js` +70/-2、`tests/ci/pr-burst-guard.test.js` +76/-14）
+- **處置與 fork overlay 保留**：
+  - `.github/PR_MODERATION.md`、`scripts/ci/pr-burst-guard.js`、`tests/ci/pr-burst-guard.test.js`、`tests/ci/pr-burst-guard-workflow.test.js` 採上游最新版本。
+  - `.github/workflows/pr-burst-guard.yml` 引入 `queue: max` 與註解，嚴格保留 `if: github.repository == 'affaan-m/ECC'` 守衛。
+  - `CONTRIBUTING.md` 套用 open PR cap 文字更新，保留頂部與結尾 fork overlay。
+- **驗證**：`node tests/ci/pr-burst-guard.test.js` 27 pass / 0 fail；`node tests/ci/pr-burst-guard-workflow.test.js` 4 pass / 0 fail；`pytest tools/test_fork_overlay.py` 20 pass / 0 fail。
+
+### 三、PR 軸分流（#3880–#3895，10 筆）
+
+| PR | 狀態 | head | 判定 | 理由與重看條件 |
+|---|---|---|---|---|
+| #3880 | OPEN | `df742084cc7802a64f09fd0cd1967a0fc60afb98` | 延後（釘 monitored） | 新增 Antigravity 2.0 / agy CLI 介面（16 檔，+866/-15），為產品新增功能；本 fork 目前無痛點（fork 內無 `.antigravity`、`.agy` 目錄，沒有對應介面可受影響）。重看：上游合併，或 PR 的 head 移動／檔數與行數（目前 16 檔，+866/-15）變動時再量。 |
+| #3881 | OPEN | `9470dc69a1369e1b91130d0df23ac254e17926df` | 延後（釘 monitored） | 套件管理器名稱原型污染防護（5 檔，+134/-10）；環境變數設為 constructor 時的邊界防護，本機未重現痛點。重看：上游合併。 |
+| #3882 | OPEN (draft) | `b2cb4b399bb6a390802e96abcc6af8df88ac1fd2` | 延後（釘 monitored） | 整合 68 個 contribution 的草稿 PR（326 檔，+26115/-1917），尚未定稿。重看：上游非 draft 並合併。 |
+| #3884 | OPEN | `c449f076f5c6dbdbea8e598f116f42349ef3822b` | 延後（釘 monitored） | 供應鏈 advisory sources 強化（2 檔，+110/-17，對應 issue #3883）；修 Windows 含空格路徑與 GET fallback。本機測試已 10/10 通過，無痛點。重看：上游合併。 |
+| #3885 | OPEN | `d9453df6fb3e6270a061fa4e8b3aa5a32c086881` | 延後（釘 monitored） | CI context routing 品質閘門（5 檔，+344/-8）；產品新功能測試，無痛點。重看：上游合併。 |
+| #3890 | OPEN | `e4fcc2b19e5fdbdc9a5457d9ea950dc606dc5e09` | 延後（釘 monitored） | workflow 安全驗證器邊界強化（2 檔，+180/-19，對應 issue #3889）；本 fork 既有 18 份 workflow 均合規且測試 26/26 通過。重看：上游合併。 |
+| #3891 | OPEN | `e26803e890fe9daadd86f0425c6b238e4b06ab7a` | 不採用（等合併） | `intent-driven-development` skill 補充 handoff 範例（4 檔，+301/-1，對應 issue #3850）；純文件與測試，無痛點。重看：上游合併。 |
+| #3893 | CLOSED | `f8348f91c629290580285a5c2e2ef5f6264275eb` | 關閉未合併；不採用 | 誤刪大量 skill 目錄（4782 檔，+9968/-985534），已關閉。不處理。 |
+| #3894 | OPEN | `b37b73248b75725c58fe14d4f5700b64e8ebc191` | 延後（釘 monitored） | `block-no-verify.js` 阻擋指令行自訂 Git alias 繞過（2 檔，+82/-35）；本機 Claude Code 設定的 hooks 與已安裝 plugin 清單 2026-11-08 實查，均無 ECC 條目，無痛點。重看：上游合併或本機啟用該 hook。 |
+| #3895 | OPEN | `00755768d54d2845b5f78a504b4d7995cecafb09` | 不採用（等合併） | 新增 arcmira MCP catalog 項目（1 檔，+8/-0）；產品新目錄。重看：上游合併。 |
+
+### 四、issue 軸分流（#3879–#3896，8 筆）
+
+| issue | 狀態 | 判定 | 理由與重看條件 |
+|---|---|---|---|
+| #3879 | OPEN | 使用回饋；不收 | 建議在 Codex 審查時跨 candidate 與 squash commit 讀 review 留言；無可執行缺陷。 |
+| #3883 | OPEN | 對應 PR #3884 | 已隨 PR #3884 釘在 `monitored`。 |
+| #3886 | OPEN | 無實質內容；不收 | 標題 `...`，body 為空。 |
+| #3887 | OPEN | 範本空白；不收 | Copilot issue 範本未填。 |
+| #3888 | CLOSED | 範本空白；不收 | Copilot issue 範本未填，已關閉。 |
+| #3889 | OPEN | 對應 PR #3890 | 已隨 PR #3890 釘在 `monitored`。 |
+| #3892 | CLOSED | 使用者環境問題；不收 | `/plugin marketplace add` 安裝失敗回報，已關閉。 |
+| #3896 | OPEN | 產品改進建議；暫不處理 | `frontend-slides` skill 建議支援單頁模式；隨上游後續修正抵達。 |
+
+### 五、monitored 重審與新釘
+
+**重審移動釘點（6 筆）：**
+
+| PR | 上游變更證據（舊 head → 新 head） | fork 影響、裁決維持理由與重看條件 |
+|---|---|---|
+| [#3816](https://github.com/affaan-m/ECC/pull/3816) | `5518e7fde9f4c5a63c2653db8a4735f5c45e10d3`；[haelyra 關閉說明](https://github.com/affaan-m/ECC/pull/3816#issuecomment-6676611016)：上游 main 在 commit `87e8d734` 已將工具改為本地 runtime wrapper 與純 TypeScript 型別匯入，打包發佈環境在實體無 `@opencode-ai/plugin` 下成功執行，optional peer dependency 提案已不需要，關閉未合併。 | **對 fork 影響**：本 fork 已於 2026-10-26 整棵採用 25278e7d（`df46e59e`）時帶入，fork 現有 `.opencode/tools/tool.ts`，原始碼已修；且本 fork 隔離發佈 workflow、不發佈 npm 套件（`FORK.md:13,31`），故 #3816 關閉對本 fork 無任何不良影響。state 更新為 `closed` 保留歷史釘點，裁決維持不採用。<br>**對應 issue #3810 處置**：#3810（仍 OPEN）指出已發佈之 `ecc-universal@2.2.3` npm 產物問題，此屬上游官方發行包範疇；本 fork 原始碼已修復且不發 npm，故 issue #3810 在 fork 端不需處理、不移植額外程式碼。 |
+| [#3849](https://github.com/affaan-m/ECC/pull/3849) | `71084e055545dae6c11102d079788b6a04c33a32` → [`5f72adbd83fb83d15bb4134ac0161e83f1f3cfef`](https://github.com/affaan-m/ECC/pull/3849)（2 檔，+72/-28）：`scripts/hooks/post-bash-command-log.js` 重構 JWT 遮罩邏輯，新增底線前綴支援（`session_<JWT>`、`bearer_<JWT>`）；引入 `mayBeJwtHeader` 常數時間過濾第二位元組以提早排除非 JWT 單字；限制 `MAX_HEADER_DECODES = 8`；重構 `findJwtHeader` 使先前候選失敗後仍向後尋找有效 header，在 `redactJwtsInChain` 維持線性時間複雜度；`tests/scripts/post-bash-command-log.test.js` 補底線前綴、後續候選與 200,000 次長輸入防 ReDoS 線性效能測試。 | 裁決維持延後（釘 monitored）。PR 仍為 OPEN 狀態未合併；改動位於 PostBashCommand hook；本機 Claude Code 設定的 hooks 與已安裝 plugin 清單 2026-11-08 實查，均無 ECC 條目，本機無痛點。重看條件維持：本機啟用該 hook 或上游合併。 |
+| [#3858](https://github.com/affaan-m/ECC/pull/3858) | `0cc28648188d2cd03e0791d93b1b26efbbd85fdb` → [`f0f68e6307a3a976738348dca709fa612483e04d`](https://github.com/affaan-m/ECC/pull/3858)（3 檔，+60/-4）：`skills/continuous-learning-v2/hooks/observe.sh` 微調 `_SECRET_VALUE_RE`，允許 legacy `sk-` 金鑰帶後綴（`sk-[A-Za-z0-9]{20,}[A-Za-z0-9_-]*`，原 negative lookahead 改為貪婪吸收）；JWT claims 區段匹配由 `{8,}` 改為 `+`（支援空 claims 字典 `e30`）；`manifests/context-packs/skill-triggers@1.json` 更新 registryDigest；`tests/hooks/observe-secret-redaction.test.js` 補空 claims JWT、含後綴 sk- 測試及 300KB 對抗性輸入線性防回溯測試。 | 裁決維持延後（釘 monitored）。PR 仍為 OPEN 狀態未合併；改動位於 continuous-learning 的 observe hook；本機 Claude Code 設定的 hooks 與已安裝 plugin 清單 2026-11-08 實查，均無 ECC 條目，本機無痛點。重看條件維持：本機啟用該 hook 或上游合併。 |
+| [#3870](https://github.com/affaan-m/ECC/pull/3870) | `a08d5da8c9017a891ff7c142b6176373724a2b01` → [`feac4f52ba9949619a1172ab8799256d18940a3f`](https://github.com/affaan-m/ECC/pull/3870)（4 檔，+87/-68）：`scripts/lib/llm-summary.js` 抽出 `isClassifierNotice` helper，正則精確錨定全行（`^Your response above was stopped by a safety classifier\s*[—–-]\s*this is not a tool or API error\.?$/i`），並讓 `extractConversationText` 亦過濾 classifier notice 避免其送入 LLM summary；`scripts/hooks/session-end.js` 改調用該 helper；`tests/hooks/session-end.test.js` 與 `tests/lib/llm-summary.test.js` 補測試（包含純 notice 時不產生 summary、引用 notice 的真實使用者提問予以保留）。 | 裁決維持延後（釘 monitored）。對應 issue #3867。PR 仍為 OPEN 狀態未合併；涉及 SessionEnd hook / LLM summary 產品行為；本機 Claude Code 設定的 hooks 與已安裝 plugin 清單 2026-11-08 實查，均無 ECC 條目，本機無痛點。重看條件維持：上游合併或本機啟用 SessionEnd hook。 |
+| [#3871](https://github.com/affaan-m/ECC/pull/3871) | `697c1d0e71b6eca050e5522ff8d36351d7f34cb2` → [`cd51c1ee063028985ed101f87bbbf92d5d847d72`](https://github.com/affaan-m/ECC/pull/3871)（3 檔，+32/-3）：`skills/continuous-learning-v2/hooks/observe.sh` 的 `_python_install_manager_launcher` 新增守衛：若存在 `PYTHON_MANAGER_DEFAULT` 則保留別名（避免 shortcut 固定指向單一 runtime）；若檢查到 Microsoft Store Python 亦保留別名；`manifests/context-packs/skill-triggers@1.json` 更新 registryDigest；`tests/hooks/clv2-pymanager-launcher.test.js` 補 Store Python 共存與 `PYTHON_MANAGER_DEFAULT` 測試。 | 裁決維持延後（釘 monitored）。PR 仍為 OPEN 狀態未合併；改動位於 continuous-learning observe hook；本機 Claude Code 設定的 hooks 與已安裝 plugin 清單 2026-11-08 實查，均無 ECC 條目，本機無痛點。重看條件維持：上游合併或本機啟用該 hook。 |
+| [#3876](https://github.com/affaan-m/ECC/pull/3876) | `d64b34137b2b18d60b9a6728e4533fcf5f2d0a5f` → [`25c838253f61ecb4e931ceaf8c1b53f67b4850e5`](https://github.com/affaan-m/ECC/pull/3876)（1 檔，+59/-32）：`skills/continuous-learning-v2/scripts/instinct-cli.py` 本身無變動；僅修改 `tests/scripts/instinct-cli-python-compat.test.js`，靜態 AST 檢查器增加對未加引號的 `X | Y`（PEP 604 union）型別標註之檢查，並拆分/強化跨 Python 版本相容性測試（f-string 等）。 | 裁決維持延後（釘 monitored）。PR 仍為 OPEN 狀態未合併；純上游測試案例強化，產品程式無改動且本機無痛點。重看條件維持：上游合併。 |
+
+- **新釘 monitored**（7 筆）：`pr#3880`、`pr#3881`、`pr#3882`（draft）、`pr#3884`、`pr#3885`、`pr#3890`、`pr#3894`。全部 30 筆 pinned 實查對齊無 drift。
+
+### 六、水位
+commit 水位推進至 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewed_pr_through` 推進至 **3895**；issue `reviewed_issue_through` 推進至 **3896**；`reviewed_date` 為 **2026-11-08**。`python tools/check_upstream_updates.py --strict` 乾淨通過（exit 0）。
