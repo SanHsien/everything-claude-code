@@ -667,3 +667,11 @@ commit 水位推進至 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `revi
 
 ### 六、水位
 commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewed_pr_through` 推進至 **3900**；issue `reviewed_issue_through` 維持 **3896**；`reviewed_date` 為 **2026-11-10**。未移植任何產品碼。
+
+## 2026-11-10：修 audit-closed-references 測試的固定日期（時間炸彈）
+
+**決定**：`tests/ci/audit-closed-references.test.js` 的 CLI fixture「page-two issue is audited…」把 stub gh 的 `closed_at`／`created_at` 由寫死的 `2026-10-11T00:00:00Z` 改為相對現在（一天前）。
+
+**根因**：`scripts/ci/audit-closed-references.js` 只稽核 30 天窗口（`DEFAULT_WINDOW_DAYS`）內關閉的 issue。寫死的 10-11 在 2026-11-10 滿 30 天，issue 被窗口濾掉，稽核變成「0 claim 全清」，`/Delivered through #3500/` 比對失敗。f559e9be 當時（窗口內）綠，之後只是日曆到期，與 5cd0867f 的文件變更無關；與網路、環境變數、執行順序無關。同檔的 101 PR fixture 早就用 `new Date()`，故不受影響。
+
+**上游**：上游 `affaan-m/ECC` main 的同檔（2026-11-10 以 `gh api` 取得）仍是同樣寫死日期，尚未修；此為本 fork 對上游持有檔的最小本機修正，上游修了或改寫此檔時以上游版為準。

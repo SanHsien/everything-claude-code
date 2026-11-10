@@ -5,6 +5,10 @@
 [`affaan-m/ECC`](https://github.com/affaan-m/ECC)
 的產品演進見其自身 [`CHANGELOG.md`](../../CHANGELOG.md) 與 [`docs/fork/UPSTREAM.md`](UPSTREAM.md) 的審查清冊。
 
+## 2026-11-10
+
+- 修 `tests/ci/audit-closed-references.test.js` CLI fixture 寫死 `2026-10-11` 日期、在 2026-11-10 超出 30 天稽核窗口而使 main CI 全紅的問題；改為相對現在的時間戳，根因與上游現況見 DECISIONS 同日條目。
+
 ## 2026-11-08
 
 - 採用上游 PR #3650 抵達 main 的 6 個 commit（`b38be6a7..d2ef2680`，tip `d2ef2680`）：移植 open PR contributor cap 機制的 CI 產品碼（`.github/PR_MODERATION.md`、`scripts/ci/pr-burst-guard.js`、`tests/ci/pr-burst-guard*.test.js`），`.github/workflows/pr-burst-guard.yml` 引入 `queue: max` 並嚴格保留 `github.repository == 'affaan-m/ECC'` 守衛，`CONTRIBUTING.md` 套用 open PR cap 文字更新並保留 fork overlay；commit 水位推進至 `d2ef2680`。
