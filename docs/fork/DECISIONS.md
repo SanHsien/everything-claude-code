@@ -633,3 +633,37 @@ fork 自行修正，採用上游 PR #3878（作者 jin0205，已關閉未合併�
 
 ### 六、水位
 commit 水位推進至 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewed_pr_through` 推進至 **3895**；issue `reviewed_issue_through` 推進至 **3896**；`reviewed_date` 為 **2026-11-08**。`python tools/check_upstream_updates.py --strict` 乾淨通過（exit 0）。
+
+## 2026-11-10：上游 PR #3897–#3900 分流；pr#3870 重審；commit 軸與 issue 軸無新項
+
+### 一、起點與範圍
+- `python tools/check_upstream_updates.py --strict` 實跑回報：commit 軸 `d2ef268` 之後 behind 0（無新 commit）；issue 軸 `#3896` 之上無新項；PR 軸 4 筆新項（#3897、#3898、#3899、#3900）；monitored 30 筆中 1 筆移動（pr#3870）。
+- 4 筆 PR 的 diff 以 `gh pr diff <n> --repo affaan-m/ECC` 唯讀取得並逐筆讀過；`gh pr view` 取 head 與檔數、行數。
+
+### 二、PR 軸分流（#3897–#3900，4 筆）
+
+| PR | 狀態 | head | 判定 | 理由與重看條件 |
+|---|---|---|---|---|
+| #3897 | OPEN | `adb525dc2cd494e2c00a0e8fa316d81ada336aa2` | 不採用（等合併） | dependabot 升 GitHub Actions 釘點（10 檔，+40/-40，皆為 `.github/workflows/*.yml` 的 `uses:` SHA 與版本註解：setup-node 7.0.0→7.1.0、pnpm/action-setup 6.1.0→6.1.1、upload-artifact 7.0.1→7.0.2、download-artifact 8.0.1→8.0.2、action-gh-release 3.0.3→3.0.4）。diff 內只有 `uses:` 行變動，無 `run:` 或權限變更；本 fork 的 CI 依自己的釘點維護，不在上游 dependabot 節奏上追單一升級。重看：上游合併（隨整棵採用抵達）。 |
+| #3898 | OPEN | `c21282b7a409cd96197746c8a5244052e8cea822` | 不採用（等合併） | dependabot 升 npm 依賴（2 檔 `package.json`、`yarn.lock`，+536/-109）：`@opencode-ai/plugin` 1.4.3→1.19.5、`sql.js` 1.14.2→1.15.2、`eslint` 10.11.0→10.14.0、`markdownlint-cli` 0.49.1→0.50.0 等，並新增 `@opentui/keymap` 與 `@ai-sdk/provider`。`yarn.lock` 的 `resolved` 皆為 npm registry；無 install 腳本新增。大版本跨度的 `@opencode-ai/plugin` 升級需在整棵採用時連同 fork 的 lockfile 一起驗，不單獨取用。重看：上游合併。 |
+| #3899 | OPEN | `6f106b85553844d197e6da874c3ff0e9cab25e17` | 延後（釘 monitored） | 擴充 Copilot port 與 Windows 驗收覆蓋（173 檔，+134103/-125）：新增大量 `scripts/copilot-*.js`、`scripts/lib/copilot-*.js`、`docs/COPILOT-*.md`、`manifests/copilot-*.json`，並改動 `README.md`、`.gitattributes`、`package.json`、`scripts/install-apply.js`、`scripts/hooks/pre-bash-commit-quality.js`、`design-quality-check.js`、`install-modules.json`。屬產品新介面，體量過大，且 `README.md`／`.gitattributes` 是 fork 有 overlay 的檔，不單獨取用。本 fork 沒有 Copilot 使用面的痛點。隱藏內容掃描見第三節。重看：上游合併，或 head／檔數與行數變動後再量。 |
+| #3900 | OPEN | `7eb5ef12fad3e22cfc0f4368e0c52f083f6db37f` | 延後（釘 monitored） | 純測試（1 檔 `tests/lib/copilot-install-target.test.js`，+37/-0），補 Copilot 規則 `paths` 驗證與連結標籤邊界。被測的 `adaptCopilotRule` 屬 Copilot 安裝目標，與 #3899 同一條線，單獨取用沒有意義。重看：上游合併，或 #3899 合併。 |
+
+### 三、隱藏內容與危險片語掃描
+- 對四份 diff 掃描 `curl|sh`、`iwr`、`iex`、`Invoke-Expression`、`dangerously`、`bypassPermissions`、`ignore previous`、`system prompt`、HTML 註解、`base64 -d`、`eval(`。#3897、#3898、#3900 無命中。
+- #3899 命中 2 處，皆讀過上下文：`scripts/hooks/pre-bash-commit-quality.js` 內的 wrapper 名單含 `iex`、`invoke-expression`，是 `git commit --no-verify` 偵測器把 PowerShell 包裝器納入檢查，屬防禦邏輯；測試檔的 PowerShell 拒絕案例清單含 `Invoke-Expression 'git commit --no-verify'`，是預期被擋的輸入。非隱藏指令。
+- #3899 新增 `.github/workflows/copilot-verification.yml`：僅 `workflow_dispatch`、`permissions: contents: read`、action 以 SHA 釘死。diff 中出現的外部網域為 `docs.github.com`、`github.com` 與測試用 `*.invalid`／`example.*`、`127.0.0.1`，另有 `agent-plugins.org`、`kimi.ai`、`iconify` 等文件／測試字串，未見新增的下載後執行流程；`package.json` 無 `preinstall`／`postinstall`／`prepare` 新增。
+
+### 四、issue 軸
+`gh issue list --state all` 最新編號仍為 #3896，水位之上無新項；`reviewed_issue_through` 維持 3896。
+
+### 五、monitored 重審（1 筆）
+
+| PR | 上游變更證據（舊 head → 新 head） | fork 影響、裁決維持理由與重看條件 |
+|---|---|---|
+| [#3870](https://github.com/affaan-m/ECC/pull/3870) | `feac4f52ba9949619a1172ab8799256d18940a3f` → [`882ba18c10064b7fd1be02a5a013d3b7655236f0`](https://github.com/affaan-m/ECC/pull/3870)（現為 4 檔，+126/-5）。經 `gh api repos/affaan-m/ECC/compare/feac4f52...882ba18c` 取得的增量只有 3 檔：`scripts/lib/llm-summary.js` +1/-1、`tests/hooks/session-end.test.js` +13/-0、`tests/lib/llm-summary.test.js` +15/-0。`CLASSIFIER_NOTICE` 正則加上選用的第二句（`The rest of it was withheld, and tool calls in it that had not finished did not run. Do not produce that content again...`），使較長的 classifier 通知也被辨認。 | 裁決維持延後（釘 monitored）。PR 仍為 OPEN 未合併；改動位於 SessionEnd hook／LLM summary；本機 Claude Code 設定的 hooks 與已安裝 plugin 清單沒有 ECC 條目（2026-11-08 實查，此次未重查，裁決依該次實查）。重看條件維持：上游合併或本機啟用 SessionEnd hook。 |
+
+- **新釘 monitored**（2 筆）：`pr#3899`、`pr#3900`。重釘 `pr#3870` 的 head。monitored 共 32 筆。
+
+### 六、水位
+commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewed_pr_through` 推進至 **3900**；issue `reviewed_issue_through` 維持 **3896**；`reviewed_date` 為 **2026-11-10**。未移植任何產品碼。
