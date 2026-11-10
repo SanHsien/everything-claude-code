@@ -651,7 +651,7 @@ commit 水位推進至 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `revi
 
 ### 三、隱藏內容與危險片語掃描
 - 對四份 diff 掃描 `curl|sh`、`iwr`、`iex`、`Invoke-Expression`、`dangerously`、`bypassPermissions`、`ignore previous`、`system prompt`、HTML 註解、`base64 -d`、`eval(`。#3897、#3898、#3900 無命中。
-- #3899 命中 2 處，皆讀過上下文：`scripts/hooks/pre-bash-commit-quality.js` 內的 wrapper 名單含 `iex`、`invoke-expression`，是 `git commit --no-verify` 偵測器把 PowerShell 包裝器納入檢查，屬防禦邏輯；測試檔的 PowerShell 拒絕案例清單含 `Invoke-Expression 'git commit --no-verify'`，是預期被擋的輸入。非隱藏指令。
+- #3899 命中 2 處，皆讀過上下文：新檔 `scripts/hooks/copilot-guard.js`（函式 `powerShellNoVerify`）的 wrapper 名單含 `iex`、`invoke-expression`，是 `git commit --no-verify` 偵測器把 PowerShell 包裝器納入檢查，屬防禦邏輯（該 PR 對 `pre-bash-commit-quality.js` 只改 7 行，無此二字）；`tests/hooks/copilot-guard.test.js` 的 PowerShell 拒絕案例清單含 `Invoke-Expression 'git commit --no-verify'`，是預期被擋的輸入。非隱藏指令。
 - #3899 新增 `.github/workflows/copilot-verification.yml`：僅 `workflow_dispatch`、`permissions: contents: read`、action 以 SHA 釘死。diff 中出現的外部網域為 `docs.github.com`、`github.com` 與測試用 `*.invalid`／`example.*`、`127.0.0.1`，另有 `agent-plugins.org`、`kimi.ai`、`iconify` 等文件／測試字串，未見新增的下載後執行流程；`package.json` 無 `preinstall`／`postinstall`／`prepare` 新增。
 
 ### 四、issue 軸
@@ -661,7 +661,7 @@ commit 水位推進至 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `revi
 
 | PR | 上游變更證據（舊 head → 新 head） | fork 影響、裁決維持理由與重看條件 |
 |---|---|---|
-| [#3870](https://github.com/affaan-m/ECC/pull/3870) | `feac4f52ba9949619a1172ab8799256d18940a3f` → [`882ba18c10064b7fd1be02a5a013d3b7655236f0`](https://github.com/affaan-m/ECC/pull/3870)（現為 4 檔，+126/-5）。經 `gh api repos/affaan-m/ECC/compare/feac4f52...882ba18c` 取得的增量只有 3 檔：`scripts/lib/llm-summary.js` +1/-1、`tests/hooks/session-end.test.js` +13/-0、`tests/lib/llm-summary.test.js` +15/-0。`CLASSIFIER_NOTICE` 正則加上選用的第二句（`The rest of it was withheld, and tool calls in it that had not finished did not run. Do not produce that content again...`），使較長的 classifier 通知也被辨認。 | 裁決維持延後（釘 monitored）。PR 仍為 OPEN 未合併；改動位於 SessionEnd hook／LLM summary；本機 Claude Code 設定的 hooks 與已安裝 plugin 清單沒有 ECC 條目（2026-11-08 實查，此次未重查，裁決依該次實查）。重看條件維持：上游合併或本機啟用 SessionEnd hook。 |
+| [#3870](https://github.com/affaan-m/ECC/pull/3870) | `feac4f52ba9949619a1172ab8799256d18940a3f` → [`882ba18c10064b7fd1be02a5a013d3b7655236f0`](https://github.com/affaan-m/ECC/pull/3870)（現為 4 檔，+126/-5）。經 `gh api repos/affaan-m/ECC/compare/feac4f52...882ba18c` 取得的增量只有 3 檔：`scripts/lib/llm-summary.js` +1/-1、`tests/hooks/session-end.test.js` +13/-0、`tests/lib/llm-summary.test.js` +15/-0。`CLASSIFIER_NOTICE` 正則加上選用的第二句（`The rest of it was withheld, and tool calls in it that had not finished did not run. Do not produce that content again...`），使較長的 classifier 通知也被辨認。數字口徑：11-08 所記 +87/-68 是 `a08d5da8`→`feac4f52` 的增量；`feac4f52` 對 merge base `b38be6a7` 的總量為 +98/-5，本次增量為 +29/-1（`llm-summary.js` 同一行被兩次改動，故總量不是兩者相加）；`b38be6a7`→`882ba18c` 直接量得 +126/-5（皆為 `gh api compare` 的 additions／deletions 加總）。 | 裁決維持延後（釘 monitored）。PR 仍為 OPEN 未合併；改動位於 SessionEnd hook／LLM summary；本機 Claude Code 設定的 hooks 與已安裝 plugin 清單沒有 ECC 條目（2026-11-08 實查，此次未重查，裁決依該次實查）。重看條件維持：上游合併或本機啟用 SessionEnd hook。 |
 
 - **新釘 monitored**（2 筆）：`pr#3899`、`pr#3900`。重釘 `pr#3870` 的 head。monitored 共 32 筆。
 
