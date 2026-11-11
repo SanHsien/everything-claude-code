@@ -173,6 +173,26 @@ function createStopFormatTypecheckOptions(sessionEnv = {}) {
   };
 }
 
+// ECC_CURSOR_HOOK_TIMEOUT_MS lets a slow machine (or a test) change the default
+// 15 s budget of a delegated hook; an explicit options.timeout still wins.
+function resolveHookTimeout(options) {
+  if (options.timeout) return options.timeout;
+  const fromEnv = Number(process.env.ECC_CURSOR_HOOK_TIMEOUT_MS);
+  return Number.isSafeInteger(fromEnv) && fromEnv > 0 ? fromEnv : 15000;
+}
+
+// `options.failClosed`: this hook is a security guard. Cursor denies a command
+// on exit code 2 and treats every other failure as "continue", so a guard that
+// cannot run to a decision (missing script, spawn error, timeout, signal,
+// crash) must itself exit 2 instead of being logged and skipped.
+function failClosedExit(scriptName, reason) {
+  process.stderr.write(
+    `[Cursor Hook] BLOCKED: ${scriptName} could not complete its check (${reason}). `
+    + 'Failing closed. Fix the hook, or disable it explicitly (ECC_DISABLED_HOOKS) to proceed.\n'
+  );
+  process.exit(2);
+}
+
 function runExistingHook(scriptName, stdinData, options = {}) {
   try {
     const scriptPath = resolveRuntimePath('scripts', 'hooks', scriptName);
@@ -197,7 +217,7 @@ function runExistingHook(scriptName, stdinData, options = {}) {
           ? { CLAUDE_SESSION_ID: String(cursorSessionId) }
           : {}),
       },
-      timeout: options.timeout || 15000,
+      timeout: resolveHookTimeout(options),
       cwd: process.cwd(),
     });
 
@@ -214,7 +234,9 @@ function runExistingHook(scriptName, stdinData, options = {}) {
           ? `signal ${result.signal}`
           : 'missing exit status';
       process.stderr.write(`[Cursor Hook] ${scriptName} failed: ${reason}\n`);
+      if (options.failClosed === true) failClosedExit(scriptName, reason);
     } else if (Number.isInteger(result.status) && result.status !== 0) {
+      if (options.failClosed === true) failClosedExit(scriptName, `exited with code ${result.status}`);
       process.stderr.write(
         `[Cursor Hook] ${scriptName} exited with code ${result.status}; continuing\n`
       );
@@ -222,6 +244,7 @@ function runExistingHook(scriptName, stdinData, options = {}) {
     return result;
   } catch (error) {
     process.stderr.write(`[Cursor Hook] ${scriptName} skipped: ${error.message}\n`);
+    if (options.failClosed === true) failClosedExit(scriptName, error.message);
     return null;
   }
 }

@@ -6,17 +6,25 @@ const {
   transformToClaude,
 } = require('./adapter');
 
+function hasBlockingGuard() {
+  return hookEnabled('pre:bash:block-no-verify', ['minimal', 'standard', 'strict'])
+    || (
+      process.platform !== 'win32'
+      && hookEnabled('pre:bash:dev-server-block', ['standard', 'strict'])
+    );
+}
+
+// Cursor denies on exit code 2 and continues on anything else, so a failure of
+// an enabled blocking guard has to turn into exit 2 here.
+function failClosed(reason) {
+  console.error(`[Cursor Hook] BLOCKED: beforeShellExecution guard failed (${reason}). Failing closed.`);
+  process.exit(2);
+}
+
 readStdin({ includeMetadata: true })
   .then(({ raw, truncated, readError }) => {
     if (truncated || readError) {
-      const hasBlockingGuard = (
-        hookEnabled('pre:bash:block-no-verify', ['minimal', 'standard', 'strict'])
-        || (
-          process.platform !== 'win32'
-          && hookEnabled('pre:bash:dev-server-block', ['standard', 'strict'])
-        )
-      );
-      if (hasBlockingGuard) {
+      if (hasBlockingGuard()) {
         console.error(truncated
           ? '[Cursor Hook] stdin exceeded the safety limit; blocking beforeShellExecution'
           : '[Cursor Hook] stdin read failed; blocking beforeShellExecution');
@@ -46,11 +54,11 @@ readStdin({ includeMetadata: true })
       // Cursor may execute only the first hook registered for an event. Keep
       // every blocking shell guard behind this single event-level dispatcher.
       if (hookEnabled('pre:bash:block-no-verify', ['minimal', 'standard', 'strict'])) {
-        runExistingHook('block-no-verify.js', claudeRaw);
+        runExistingHook('block-no-verify.js', claudeRaw, { failClosed: true });
       }
 
       if (hookEnabled('pre:bash:dev-server-block', ['standard', 'strict']) && process.platform !== 'win32') {
-        runExistingHook('pre-bash-dev-server-block.js', claudeRaw);
+        runExistingHook('pre-bash-dev-server-block.js', claudeRaw, { failClosed: true });
       }
 
       if (
@@ -65,10 +73,13 @@ readStdin({ includeMetadata: true })
       if (hookEnabled('pre:bash:git-push-reminder', ['strict']) && /\bgit\s+push\b/.test(cmd)) {
         console.error('[ECC] Review changes before push: git diff origin/main...HEAD');
       }
-    } catch {
-      // noop
+    } catch (error) {
+      if (hasBlockingGuard()) failClosed(error.message);
     }
 
     process.stdout.write(raw);
   })
-  .catch(() => process.exit(0));
+  .catch(error => {
+    if (hasBlockingGuard()) failClosed(error && error.message);
+    process.exit(0);
+  });

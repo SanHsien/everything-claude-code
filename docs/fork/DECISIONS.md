@@ -754,3 +754,13 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **修法**：`scripts/hooks/safety-hooks.js` 集中 pre-Bash 安全子 hook 的 id／profile 清單（`PRE_BASH_SAFETY_HOOKS`，測試釘住 `bash-hook-dispatcher.js` 的宣告與它一致）並新增 `hasActivePreBashSafetyHook()`。`pre-bash-dispatcher.js` 改為：先看 dispatcher 是否停用，`truncated` 時只在仍有啟用的安全子 hook 才擋，`bash-hook-dispatcher` 延遲到這些檢查之後才 `require`，載入失敗時有啟用的安全子 hook 才 exit 2，否則 exit 0 並說明原因；最外層 catch 同理。`isSafetyEntrypoint`（bootstrap 判斷用）也改為「該 hook 目前仍啟用」才算安全入口：dispatcher 要啟用且有啟用的安全子 hook；`run-with-flags` 入口要該 hook 的 profile／`ECC_DISABLED_HOOKS`／`ECC_GATEGUARD` 都沒關掉。所以使用者停用後，崩潰或載入失敗不再被 bootstrap 轉成阻擋。
 
 **測試**：新增 `tests/hooks/safety-hooks-optout.test.js`（9 項，修前 4 項紅）：用複製出來的 plugin root 讓 `auto-tmux-dev.js` 帶語法錯誤；啟用時 exit 2、停用 dispatcher／停用全部安全子 hook／`ECC_GATEGUARD=off` 加停用 block-no-verify 時 exit 0、只停用其中之一仍 exit 2；超大請求同樣只在有啟用的安全子 hook 時才擋；`run-with-flags` 入口崩潰在 hook 停用後不再 exit 2。
+
+## 2026-11-12：Cursor `beforeShellExecution` 的安全 guard 改為 fail-closed（F1 補漏，推送前審查）
+
+**問題**：bb514f87 只處理 Claude Code 的 PreToolUse。`.cursor/hooks/before-shell-execution.js` 經 `adapter.js` 的 `runExistingHook` 跑 `block-no-verify.js`（及非 Windows 的 `pre-bash-dev-server-block.js`），Cursor 只在 exit code 2 時拒絕命令，其餘一律繼續；而 `runExistingHook` 對 spawn 錯誤、15 秒逾時、signal、非 0／2 的退出碼、腳本缺失都只寫 stderr 就放行，外層 `.catch(() => process.exit(0))` 與內層 `catch { /* noop */ }` 也放行。
+
+**修法**：`runExistingHook` 新增 `options.failClosed`，為真時上述所有情形改為 `[Cursor Hook] BLOCKED: …` 加 `exit 2`（Cursor 的拒絕方式；`.cursor/hooks.json` 沒有 `failClosed` 欄位，Cursor 協定只看退出碼）。`before-shell-execution.js` 對兩個 guard 傳 `failClosed: true`，外層 catch 與內層 catch 在仍有啟用的 blocking guard（沿用既有 `hasBlockingGuard` 判斷：block-no-verify 或非 Windows 的 dev-server-block）時 exit 2，使用者以 `ECC_DISABLED_HOOKS` 停用後照舊放行。新增 `ECC_CURSOR_HOOK_TIMEOUT_MS`（正整數毫秒，預設仍 15 秒，明確的 `options.timeout` 優先），讓慢機器與測試能調整委派 hook 的預算。其他事件的 Cursor hook（提醒、記錄、格式化）維持非阻擋。
+
+**測試**：新增 `tests/hooks/cursor-fail-closed.test.js`（6 項，修前 3 項紅）：以安裝版型（`.cursor/hooks` 加 `scripts/{hooks,lib}`）搭配可替換的 `block-no-verify.js`，crash（exit 1）、腳本缺失、逾時皆 exit 2；正常放行、exit 2 拒絕、使用者停用後即使壞掉也放行。`cursor-block-no-verify` 15 項、`cursor-hook-dispatchers` 27 項維持綠。
+
+**限制**：Cursor 本身若在 hook 逾時（`hooks.json` 的 `timeout`）時繼續執行是宿主協定，hook 內做不到；本修補只保證 hook 自己能控制的失敗路徑。
