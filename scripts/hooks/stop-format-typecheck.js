@@ -24,6 +24,7 @@ const path = require('path');
 
 const { findProjectRoot, detectFormatter, resolveFormatterBin } = require('../lib/resolve-formatter');
 const { resolveHookSessionId } = require('../lib/hook-session');
+const { buildCmdShimInvocation, isWindowsCmdShim } = require('../lib/windows-cmd');
 
 const MAX_STDIN = 1024 * 1024;
 // Total ms budget reserved for all batches (leaves headroom below the 300s Stop timeout)
@@ -44,10 +45,6 @@ function getPerBatchBudgetMs(totalBudgetMs, totalBatches) {
     ? Math.max(1, Math.floor(totalBudgetMs / totalBatches))
     : 60_000;
 }
-
-// Characters cmd.exe treats as separators/operators when shell: true is used.
-// Includes spaces and parentheses to guard paths like "C:\Users\John Doe\...".
-const UNSAFE_PATH_CHARS = /[&|<>^%!\s()]/;
 
 /** Parse the accumulator text into a deduplicated array of file paths. */
 function parseAccumulator(raw) {
@@ -101,12 +98,18 @@ function formatBatch(projectRoot, files, timeoutMs) {
       : [...resolved.prefix, '--write', ...existingFiles];
 
   try {
-    if (process.platform === 'win32' && resolved.bin.endsWith('.cmd')) {
-      if (existingFiles.some(f => UNSAFE_PATH_CHARS.test(f))) {
-        process.stderr.write('[Hook] stop-format-typecheck: skipping batch — unsafe path chars\n');
+    if (isWindowsCmdShim(resolved.bin)) {
+      // .cmd shims need cmd.exe. Each token goes through its own environment
+      // variable (no shell: true), so spaces and cmd metacharacters in paths
+      // such as "C:\Users\John Doe\..." stay inside one argument.
+      let invocation;
+      try {
+        invocation = buildCmdShimInvocation(resolved.bin, fileArgs, { cwd: projectRoot, stdio: 'pipe', timeout: timeoutMs });
+      } catch (error) {
+        process.stderr.write(`[Hook] stop-format-typecheck: skipping batch — ${error.message}\n`);
         return;
       }
-      const result = spawnSync(resolved.bin, fileArgs, { cwd: projectRoot, shell: true, stdio: 'pipe', timeout: timeoutMs });
+      const result = spawnSync(invocation.command, invocation.args, invocation.options);
       if (result.error) throw result.error;
     } else {
       execFileSync(resolved.bin, fileArgs, { cwd: projectRoot, stdio: ['pipe', 'pipe', 'pipe'], timeout: timeoutMs });

@@ -3494,8 +3494,9 @@ async function runTests() {
       // Strip comments to avoid matching "shell: true" in comment text
       const codeOnly = formatSource.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
       assert.ok(!/execFileSync\([^)]*shell\s*:/.test(codeOnly), 'post-edit-format.js should not pass shell option to execFileSync');
-      assert.ok(codeOnly.includes("process.platform === 'win32' && resolved.bin.endsWith('.cmd')"), 'Windows shell execution must stay gated to .cmd shims');
-      assert.ok(codeOnly.includes('UNSAFE_PATH_CHARS'), 'Must guard against shell metacharacters before using shell: true');
+      assert.ok(codeOnly.includes('isWindowsCmdShim(resolved.bin)'), 'Windows cmd.exe execution must stay gated to .cmd shims');
+      assert.ok(codeOnly.includes('buildCmdShimInvocation('), 'Windows .cmd shims must run through the env-token invocation builder');
+      assert.ok(!/shell\s*:\s*true/.test(codeOnly), 'post-edit-format.js must not use shell: true (arguments would be split on spaces)');
       // npx.cmd handling in shared resolve-formatter.js
       const resolverSource = fs.readFileSync(path.join(scriptsDir, '..', 'lib', 'resolve-formatter.js'), 'utf8');
       assert.ok(resolverSource.includes('npx.cmd'), 'resolve-formatter.js should use npx.cmd for Windows cross-platform safety');
@@ -3506,7 +3507,7 @@ async function runTests() {
   else failed++;
 
   if (
-    await asyncTest('blocks Windows shell metacharacters before shell:true formatter execution', async () => {
+    await asyncTest('passes Windows shell metacharacters as inert env tokens, never through shell:true', async () => {
       const hookPath = path.join(scriptsDir, 'post-edit-format.js');
       const resolverPath = path.join(scriptsDir, '..', 'lib', 'resolve-formatter.js');
       const childProcess = require('child_process');
@@ -3517,7 +3518,8 @@ async function runTests() {
       const resolvedHookPath = require.resolve(hookPath);
       const originalResolverCache = require.cache[resolvedResolverPath];
       const originalHookCache = require.cache[resolvedHookPath];
-      const blockedPaths = ['semicolon;test.js', 'backtick`test.js', 'subshell$(test).js', 'group(test).js'];
+      const inertPaths = ['semicolon;test.js', 'backtick`test.js', 'subshell$(test).js', 'group(test).js', 'two words & more.js'];
+      const unsafePaths = ['quote"test.js'];
 
       try {
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
@@ -3545,7 +3547,19 @@ async function runTests() {
 
         const { run } = require(hookPath);
 
-        for (const filePath of blockedPaths) {
+        for (const filePath of inertPaths) {
+          spawnCalls = [];
+          const stdinJson = JSON.stringify({ tool_input: { file_path: filePath } });
+          assert.strictEqual(run(stdinJson), stdinJson, 'Should pass through original stdin JSON');
+          assert.strictEqual(spawnCalls.length, 1, `Should format ${filePath} through exactly one spawn`);
+          const [command, args, options] = spawnCalls[0];
+          assert.notStrictEqual(options.shell, true, 'must not use shell: true');
+          assert.ok(/cmd(\.exe)?$/i.test(command), 'cmd shims run through cmd.exe');
+          assert.ok(!args.join(' ').includes(path.basename(filePath)), `${filePath} must not appear in the cmd command line`);
+          assert.ok(Object.values(options.env).includes(path.resolve(filePath)), `${filePath} travels as one env token`);
+        }
+
+        for (const filePath of unsafePaths) {
           spawnCalls = [];
           const stdinJson = JSON.stringify({ tool_input: { file_path: filePath } });
           assert.strictEqual(run(stdinJson), stdinJson, 'Should pass through original stdin JSON');

@@ -20,10 +20,8 @@
 const { execFileSync, spawnSync } = require('child_process');
 const path = require('path');
 
-// Shell metacharacters that cmd.exe interprets as command separators/operators
-const UNSAFE_PATH_CHARS = /[&|<>^%!;`()$]/;
-
 const { findProjectRoot, detectFormatter, resolveFormatterBin } = require('../lib/resolve-formatter');
+const { buildCmdShimInvocation, isWindowsCmdShim } = require('../lib/windows-cmd');
 
 const MAX_DIRECT_STDIN_BYTES = 16 * 1024 * 1024;
 
@@ -53,18 +51,17 @@ function run(rawInput) {
         // Prettier: `--write` = format only
         const args = formatter === 'biome' ? [...resolved.prefix, 'check', '--write', resolvedFilePath] : [...resolved.prefix, '--write', resolvedFilePath];
 
-        if (process.platform === 'win32' && resolved.bin.endsWith('.cmd')) {
-          // Windows: .cmd files require shell to execute. Guard against
-          // command injection by rejecting paths with shell metacharacters.
-          if (UNSAFE_PATH_CHARS.test(resolvedFilePath)) {
-            throw new Error('File path contains unsafe shell characters');
-          }
-          const result = spawnSync(resolved.bin, args, {
+        if (isWindowsCmdShim(resolved.bin)) {
+          // Windows: .cmd files require cmd.exe. Each token travels in its own
+          // environment variable (no shell: true), so spaces and cmd
+          // metacharacters in the path stay inside one argument. A token that
+          // could break out of its quotes throws and the file is skipped.
+          const invocation = buildCmdShimInvocation(resolved.bin, args, {
             cwd: projectRoot,
-            shell: true,
             stdio: 'pipe',
             timeout: 15000
           });
+          const result = spawnSync(invocation.command, invocation.args, invocation.options);
           if (result.error) throw result.error;
           if (typeof result.status === 'number' && result.status !== 0) {
             throw new Error(result.stderr?.toString() || `Formatter exited with status ${result.status}`);

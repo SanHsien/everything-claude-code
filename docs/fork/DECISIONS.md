@@ -716,3 +716,13 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **測試**：新增 `tests/lib/install-cursor-hooks-merge.test.js`（7 項：首次安裝、重裝保留使用者 hook 且 ECC 不重複、ECC 定義更新不重複、repair 保留、uninstall 只移除 ECC、僅 ECC 時整檔刪除、無法解析的檔案不被覆寫）。修前 5 項紅、修後全綠；`lib/install*` 18 個檔 311 項、`scripts/uninstall`／`repair`／`doctor` 全綠。
 
 **上游**：`upstream/main` 仍為 `d2ef2680`，未修；對上游持有檔 `apply.js`、`install-lifecycle.js` 為最小接線，邏輯在新檔。上游修了或改寫時以上游版為準。
+
+## 2026-11-12：Windows 格式化 hook 支援含空白與特殊字元的路徑（覆核 F4）
+
+**根因**：`stop-format-typecheck.js`（已註冊的 Stop hook）把空白列為 unsafe，路徑含空白（如 `C:\Users\John Doe\...`）時整批略過格式化；`post-edit-format.js`（舊式、未註冊）允許空白，卻以 `spawnSync(shim, argsArray, { shell: true })` 啟動 `.cmd`，陣列在 `shell: true` 下不會加引號，`two words.js` 被拆成兩個參數（Node 同時報 DEP0190）。
+
+**修法**：新增 fork 自有模組 `scripts/lib/windows-cmd.js`，沿用 `pre-bash-commit-quality.js` 已驗證的做法：每個 token（shim 本身與每個參數）各放一個環境變數，cmd 命令列只含加引號的 `%NAME%` 參照，`shell: false`、`/d /v:off /s /c`。值不會變成 cmd 原始碼，所以 `& | < > ^ ( ) ! ; %` 與空白都保持字面；只有可能跳出引號的 `"`、NUL、CR、LF 才拒絕（Windows 路徑本來就不可能有），拒絕時略過該批並說明原因。兩支 hook 改用它，移除各自的 `UNSAFE_PATH_CHARS`。
+
+**測試**：新增 `tests/hooks/format-windows-paths.test.js`（6 項）：建構器單元測試（參數不進命令列、舊 token 清除、危險字元拒絕）加 Windows 上以真的 `.cmd` shim（放在含空白與括號的目錄、目標檔名含 `& % ! ( )`）驗證 `post-edit-format` 與 `stop-format-typecheck` 都把路徑當一個參數交給 shim；修前兩項 e2e 紅（shim 從未執行／Stop 略過整批）、修後全綠。`tests/hooks/hooks.test.js` 兩項原本釘住舊實作（原始碼含 `UNSAFE_PATH_CHARS`、`;` 反引號 `$()` 括號路徑須在 spawn 前被擋），改成釘住性質：不用 `shell: true`、路徑作為單一環境 token 傳遞、含 `"` 的路徑才被拒絕。`hooks` 260 項、`stop-format-typecheck` 33 項、`quality-gate` 24 項全綠。
+
+**上游**：`upstream/main` 仍為 `d2ef2680`，兩支 hook 未修；本機最小修正，上游改寫時以上游版為準。
