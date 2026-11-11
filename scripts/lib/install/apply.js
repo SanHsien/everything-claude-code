@@ -960,7 +960,8 @@ function applyInstallPlanLocked(rawPlan, dependencies = {}, settingsLockHeld = f
         // An unparsable existing file throws instead of being overwritten.
         const merged = mergeCursorHooksConfig(
           fs.readFileSync(operation.destinationPath, 'utf8'),
-          fs.readFileSync(operation.sourcePath, 'utf8')
+          fs.readFileSync(operation.sourcePath, 'utf8'),
+          [...migration.previousManagedOperations.values()]
         );
         fs.writeFileSync(operation.destinationPath, merged, 'utf8');
         writtenDestinations.add(operation.destinationPath);

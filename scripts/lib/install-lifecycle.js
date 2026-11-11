@@ -39,6 +39,7 @@ const {
 } = require('./install/claude-settings');
 const { transformInstallContent } = require('./install/content-transform');
 const {
+  collectEccCommands,
   isCursorHooksOperation,
   mergeCursorHooksConfig,
   stripEccHooksConfig,
@@ -332,7 +333,7 @@ function repairCopyFile(repoRoot, operation, trustedRoot, options) {
     const source = readFileWithMetadataNoFollow(sourcePath, 'utf8');
     writeContainedFile(
       operation.destinationPath,
-      mergeCursorHooksConfig(existingText, source.content),
+      mergeCursorHooksConfig(existingText, source.content, options.managedOperations || []),
       trustedRoot,
       'repair',
       source.mode & 0o777,
@@ -438,7 +439,7 @@ function executeRepairOperation(repoRoot, operation, trustedRoot, options = {}) 
     settingsLockHeld = false,
     writeOptions = {},
   } = options;
-  const resolved = { linkIndex, target, settingsLockHeld, writeOptions };
+  const resolved = { linkIndex, target, settingsLockHeld, writeOptions, managedOperations: options.managedOperations || [] };
 
   switch (operation.kind) {
     case 'copy-file':
@@ -530,7 +531,7 @@ function retainDriftedCopy(operation, trustedRoot) {
   return null;
 }
 
-function uninstallCursorHooks(operation, trustedRoot) {
+function uninstallCursorHooks(operation, trustedRoot, managedOperations) {
   const existingDestination = getContainedExistingPath(
     operation.destinationPath,
     trustedRoot,
@@ -538,23 +539,25 @@ function uninstallCursorHooks(operation, trustedRoot) {
     { allowFinalSymlink: true }
   );
   if (!existingDestination) return uninstallNoop();
-  let remaining;
+  let stripped;
   try {
-    remaining = stripEccHooksConfig(
-      readFileNoFollow(getManagedDestination(existingDestination, trustedRoot, 'uninstall').managedPath, 'utf8')
+    stripped = stripEccHooksConfig(
+      readFileNoFollow(getManagedDestination(existingDestination, trustedRoot, 'uninstall').managedPath, 'utf8'),
+      collectEccCommands(null, managedOperations)
     );
   } catch (_error) {
     // Not a hooks config ECC can interpret: leave the user's file alone.
     return uninstallRetained(operation);
   }
-  if (remaining === null) return uninstallRemovePath(operation, trustedRoot);
-  writeContainedFile(operation.destinationPath, remaining, trustedRoot, 'uninstall');
+  if (!stripped.changed) return uninstallNoop();
+  if (stripped.text === null) return uninstallRemovePath(operation, trustedRoot);
+  writeContainedFile(operation.destinationPath, stripped.text, trustedRoot, 'uninstall');
   return { removedPaths: [], cleanupTargets: [] };
 }
 
 function uninstallCopyFile(operation, trustedRoot, options) {
   if (isCursorHooksOperation(operation)) {
-    return uninstallCursorHooks(operation, trustedRoot);
+    return uninstallCursorHooks(operation, trustedRoot, options.managedOperations || []);
   }
   if (options.preserveDriftedCopies) {
     const retained = retainDriftedCopy(operation, trustedRoot);
@@ -1696,6 +1699,7 @@ function executeGuardedRepairOperation(repair, plan, operation, repairedPaths) {
     target: record.adapter.target,
     settingsLockHeld,
     writeOptions: apply.getOpenCodeActivationWriteOptions(operation, activationSnapshot),
+    managedOperations: getManagedOperations(record.state),
   });
   if (repairedPath) {
     repairedPaths.push(repairedPath);
@@ -2029,6 +2033,7 @@ function uninstallInstalledStates(options = {}) {
         }
         const outcome = executeUninstallOperation(operation, record.targetRoot, {
           preserveDriftedCopies: true,
+          managedOperations: operations,
           target: record.adapter.target,
           settingsLockHeld: Boolean(releaseSettingsLock),
         });

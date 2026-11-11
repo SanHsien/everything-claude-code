@@ -764,3 +764,13 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **測試**：新增 `tests/hooks/cursor-fail-closed.test.js`（6 項，修前 3 項紅）：以安裝版型（`.cursor/hooks` 加 `scripts/{hooks,lib}`）搭配可替換的 `block-no-verify.js`，crash（exit 1）、腳本缺失、逾時皆 exit 2；正常放行、exit 2 拒絕、使用者停用後即使壞掉也放行。`cursor-block-no-verify` 15 項、`cursor-hook-dispatchers` 27 項維持綠。
 
 **限制**：Cursor 本身若在 hook 逾時（`hooks.json` 的 `timeout`）時繼續執行是宿主協定，hook 內做不到；本修補只保證 hook 自己能控制的失敗路徑。
+
+## 2026-11-12：F3 補強——只認得出確切是 ECC 寫的 hook 條目（推送前審查）
+
+**問題**：ba1e1205 以 `node .cursor/hooks/` 前綴判斷 ECC 條目。使用者自己放在同一目錄的 `node .cursor/hooks/my-own-script.js` 會被當成 ECC 條目，在重裝／repair 被丟掉；uninstall 移除後若沒剩東西就刪檔。另外 `stripEccHooksConfig` 在沒有任何 ECC 條目可移除時（例如 `{"version":1,"hooks":{}}`）仍回 null 而刪檔。
+
+**修法**：ECC 條目改為精確比對 command：ECC 來源 `.cursor/hooks.json` 的 command 集合，加上 install-state ledger 裡 `<target>/.cursor/hooks/` 下由 ECC 安裝的檔案（`node .cursor/hooks/<檔名>`，涵蓋舊版 ECC 寫入、新版來源已不存在的條目）。apply 用規劃前的 ledger（`previousManagedOperations`）、repair 用 `record.state`、uninstall 用整份受管 operations（uninstall 沒有來源檔，只靠 ledger）。`stripEccHooksConfig` 改回傳 `{ changed, text }`：沒有移除任何條目時原樣不動（不寫、不刪），只有「確實移除了 ECC 條目且什麼都沒剩」才刪檔。
+
+**合併順序（建議 7）**：維持 ECC 條目在前、使用者條目在後。查 Cursor 官方文件（2026-11-12 取得 cursor.com/docs/agent/hooks 的「Configuration」段）：「All matching hooks from every source run, and Cursor merges their responses: any deny wins over ask, and ask wins over allow」，亦即同一事件的多個 hook 都會執行，順序不影響使用者 hook 是否被執行，不需要調換。`before-shell-execution.js` 內「Cursor may execute only the first hook registered for an event」的舊註解與官方文件現況不符，但那是上游持有檔的註解，未改。
+
+**測試**：`tests/lib/install-cursor-hooks-merge.test.js` 增至 10 項：使用者自己的 `node .cursor/hooks/my-own-script.js` 在重裝、repair、uninstall 都保留（修前紅）；沒有 ECC 條目的 hooks.json 在 uninstall 不被刪（修前紅）；舊版 ECC 條目（腳本記在 ledger）在重裝時被移除。

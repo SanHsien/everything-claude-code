@@ -81,6 +81,7 @@ function createFixture(t) {
     includeComponentIds: [], excludeComponentIds: [], hookConsent: 'enabled',
   }, options);
   return {
+    sourceRoot,
     hooksPath,
     writeSource: value => json('.cursor/hooks.json', value),
     install: () => applyInstallPlan(plan()),
@@ -169,6 +170,49 @@ test('a hooks.json the installer cannot parse is left untouched and reported', t
   fs.writeFileSync(fixture.hooksPath, '{ not json');
   assert.throws(() => fixture.install(), /hooks\.json/);
   assert.equal(fs.readFileSync(fixture.hooksPath, 'utf8'), '{ not json');
+});
+
+test('a user script that lives in the ECC hooks directory is never treated as an ECC entry', t => {
+  const fixture = createFixture(t);
+  fixture.install();
+  const userScript = { command: 'node .cursor/hooks/my-own-script.js', event: 'stop' };
+  const config = fixture.read();
+  config.hooks.stop = [userScript];
+  fixture.write(config);
+  fixture.install();
+  assert.deepEqual(fixture.read().hooks.stop, [userScript], 'reinstall keeps it');
+  const edited = fixture.read();
+  delete edited.hooks.sessionStart;
+  fixture.write(edited);
+  repairResult(fixture.repair());
+  assert.deepEqual(fixture.read().hooks.stop, [userScript], 'repair keeps it');
+  assert.equal(repairResult(fixture.uninstall()).status, 'uninstalled');
+  assert.deepEqual(fixture.read(), { version: 1, hooks: { stop: [userScript] } }, 'uninstall keeps the file and the entry');
+});
+
+test('uninstall leaves a hooks.json without ECC entries untouched instead of deleting it', t => {
+  const fixture = createFixture(t);
+  fixture.install();
+  fixture.write({ version: 1, hooks: {} });
+  repairResult(fixture.uninstall());
+  assert.deepEqual(fixture.read(), { version: 1, hooks: {} });
+});
+
+test('an entry written by an older ECC version (script recorded in the ledger) is removed on reinstall', t => {
+  const fixture = createFixture(t);
+  const legacy = { command: 'node .cursor/hooks/legacy-guard.js', event: 'preCompact', description: 'old ECC guard' };
+  const withLegacy = eccHooks();
+  withLegacy.hooks.preCompact = [legacy];
+  fixture.writeSource(withLegacy);
+  fs.writeFileSync(path.join(fixture.sourceRoot, '.cursor', 'hooks', 'legacy-guard.js'), '// old');
+  fixture.install();
+  assert.deepEqual(fixture.read().hooks.preCompact, [legacy]);
+  // The new ECC version dropped that hook and its script.
+  fixture.writeSource(eccHooks());
+  fs.rmSync(path.join(fixture.sourceRoot, '.cursor', 'hooks', 'legacy-guard.js'));
+  fixture.install();
+  assert.equal(fixture.read().hooks.preCompact, undefined, 'the stale ECC entry is gone');
+  assert.deepEqual(fixture.read().hooks.sessionStart, [ECC_START]);
 });
 
 function repairResult(report) {
