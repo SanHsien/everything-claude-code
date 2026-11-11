@@ -3489,14 +3489,53 @@ async function runTests() {
   console.log('\npost-edit-format.js (security & extension tests):');
 
   if (
-    await asyncTest('source code does not pass shell option to execFileSync (security)', async () => {
+    await asyncTest('formatter hook never starts the formatter with shell: true (security)', async () => {
       const formatSource = fs.readFileSync(path.join(scriptsDir, 'post-edit-format.js'), 'utf8');
       // Strip comments to avoid matching "shell: true" in comment text
       const codeOnly = formatSource.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
       assert.ok(!/execFileSync\([^)]*shell\s*:/.test(codeOnly), 'post-edit-format.js should not pass shell option to execFileSync');
-      assert.ok(codeOnly.includes('isWindowsCmdShim(resolved.bin)'), 'Windows cmd.exe execution must stay gated to .cmd shims');
-      assert.ok(codeOnly.includes('buildCmdShimInvocation('), 'Windows .cmd shims must run through the env-token invocation builder');
-      assert.ok(!/shell\s*:\s*true/.test(codeOnly), 'post-edit-format.js must not use shell: true (arguments would be split on spaces)');
+      // Behaviour, not wording: on every platform/bin combination the formatter
+      // is started exactly once and never with shell: true.
+      const childProcess = require('child_process');
+      const hookPath = path.join(scriptsDir, 'post-edit-format.js');
+      const resolverPath = require.resolve(path.join(scriptsDir, '..', 'lib', 'resolve-formatter.js'));
+      const resolvedHookPath = require.resolve(hookPath);
+      const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+      const originalSpawnSync = childProcess.spawnSync;
+      const originalExecFileSync = childProcess.execFileSync;
+      const originalResolverCache = require.cache[resolverPath];
+      const originalHookCache = require.cache[resolvedHookPath];
+      try {
+        for (const platform of ['win32', 'linux']) {
+          for (const bin of ['formatter.cmd', 'formatter.exe']) {
+            Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+            const started = [];
+            childProcess.spawnSync = (...args) => { started.push(args[2] || {}); return { status: 0, stderr: Buffer.from('') }; };
+            childProcess.execFileSync = (...args) => { started.push(args[2] || {}); return Buffer.from(''); };
+            require.cache[resolverPath] = {
+              id: resolverPath, filename: resolverPath, loaded: true,
+              exports: {
+                findProjectRoot: () => process.cwd(),
+                detectFormatter: () => 'prettier',
+                resolveFormatterBin: () => ({ bin, prefix: [] })
+              }
+            };
+            delete require.cache[resolvedHookPath];
+            const { run } = require(hookPath);
+            run(JSON.stringify({ tool_input: { file_path: 'a file.js' } }));
+            assert.strictEqual(started.length, 1, `${platform}/${bin}: formatter should start exactly once`);
+            assert.notStrictEqual(started[0].shell, true, `${platform}/${bin}: must not use shell: true`);
+          }
+        }
+      } finally {
+        if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
+        childProcess.spawnSync = originalSpawnSync;
+        childProcess.execFileSync = originalExecFileSync;
+        if (originalResolverCache) require.cache[resolverPath] = originalResolverCache;
+        else delete require.cache[resolverPath];
+        if (originalHookCache) require.cache[resolvedHookPath] = originalHookCache;
+        else delete require.cache[resolvedHookPath];
+      }
       // npx.cmd handling in shared resolve-formatter.js
       const resolverSource = fs.readFileSync(path.join(scriptsDir, '..', 'lib', 'resolve-formatter.js'), 'utf8');
       assert.ok(resolverSource.includes('npx.cmd'), 'resolve-formatter.js should use npx.cmd for Windows cross-platform safety');
