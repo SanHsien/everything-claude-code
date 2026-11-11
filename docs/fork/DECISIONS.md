@@ -774,3 +774,11 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **合併順序（建議 7）**：維持 ECC 條目在前、使用者條目在後。查 Cursor 官方文件（2026-11-12 取得 cursor.com/docs/agent/hooks 的「Configuration」段）：「All matching hooks from every source run, and Cursor merges their responses: any deny wins over ask, and ask wins over allow」，亦即同一事件的多個 hook 都會執行，順序不影響使用者 hook 是否被執行，不需要調換。`before-shell-execution.js` 內「Cursor may execute only the first hook registered for an event」的舊註解與官方文件現況不符，但那是上游持有檔的註解，未改。
 
 **測試**：`tests/lib/install-cursor-hooks-merge.test.js` 增至 10 項：使用者自己的 `node .cursor/hooks/my-own-script.js` 在重裝、repair、uninstall 都保留（修前紅）；沒有 ECC 條目的 hooks.json 在 uninstall 不被刪（修前紅）；舊版 ECC 條目（腳本記在 ledger）在重裝時被移除。
+
+## 2026-11-12：安全 hook 不再設 5 秒 timeout（F1 補強，推送前審查）
+
+**問題**：`hooks/hooks.json` 的 `pre:powershell:gateguard-fact-force`、`pre:edit-write:gateguard-fact-force`、`pre:config-protection` 各有 `"timeout": 5`。Claude Code 對逾時的 command hook 視為非阻擋錯誤，工具照跑；冷磁碟或防毒掃描下 Node 啟動加載入 GateGuard 超過 5 秒時，安全檢查就變成放行，與 bb514f87 的 fail-closed 相矛盾。
+
+**修法**：移除這三個 `timeout`，與 Bash 的 `pre-bash-dispatcher` 條目一致（用宿主預設，遠大於 bootstrap 子程序的 30 秒上限，所以逾時由 bootstrap 先判定並 exit 2）；`hooks/hooks.metadata.json` 的指紋用 `validate-hooks.js --update-fingerprints` 重產。新增 `tests/hooks/safety-hooks-timeouts.test.js`：四個安全入口（dispatcher、兩個 GateGuard、config-protection）都必須註冊，且 timeout 不得短於 bootstrap 子程序逾時（修前紅）。
+
+**協定限制（仍是 fail-open）**：宿主端逾時（hook 設了 `timeout`，或宿主預設上限到了）本身是 Claude Code 的非阻擋錯誤，hook 內無法改成阻擋；本 fork 只能保證 hook 自己控制得到的失敗路徑（解析、載入、例外、子程序逾時）都 exit 2，並避免主動設定會提早觸發宿主逾時的短 timeout。

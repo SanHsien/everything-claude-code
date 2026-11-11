@@ -10,7 +10,7 @@
       {
         "id": "pre:powershell:gateguard-fact-force",
         "description": "PowerShell fact-forcing gate: inspect destructive commands without running unrelated Bash-only preflight hooks",
-        "fingerprint": "46a805223053"
+        "fingerprint": "1e95a2fdbe5e"
       },
       {
         "id": "pre:write:doc-file-warning",
@@ -35,7 +35,7 @@
       {
         "id": "pre:config-protection",
         "description": "Block modifications to linter/formatter config files. Steers agent to fix code instead of weakening configs.",
-        "fingerprint": "b75c69a065b7"
+        "fingerprint": "fc51fd8b89de"
       },
       {
         "id": "pre:mcp-health-check",
@@ -45,7 +45,7 @@
       {
         "id": "pre:edit-write:gateguard-fact-force",
         "description": "Fact-forcing gate: deny the first Edit/Write/MultiEdit/NotebookEdit of each file with questions chosen by target class and by what the change touches; a completed search naming the file in the current turn, a comment or whitespace-only edit, or a same-turn sibling of a new file already gated passes with a note instead; sensitive targets (secrets, keys, auth/payment code, migrations, CI workflows) and hard-linked files are always gated, also in subagents",
-        "fingerprint": "4778e39c56cf"
+        "fingerprint": "145eb4a3b87e"
       },
       {
         "id": "pre:hookify-runtime",
