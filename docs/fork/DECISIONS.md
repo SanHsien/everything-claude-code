@@ -782,3 +782,56 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **修法**：移除這三個 `timeout`，與 Bash 的 `pre-bash-dispatcher` 條目一致（用宿主預設，遠大於 bootstrap 子程序的 30 秒上限，所以逾時由 bootstrap 先判定並 exit 2）；`hooks/hooks.metadata.json` 的指紋用 `validate-hooks.js --update-fingerprints` 重產。新增 `tests/hooks/safety-hooks-timeouts.test.js`：四個安全入口（dispatcher、兩個 GateGuard、config-protection）都必須註冊，且 timeout 不得短於 bootstrap 子程序逾時（修前紅）。
 
 **協定限制（仍是 fail-open）**：宿主端逾時（hook 設了 `timeout`，或宿主預設上限到了）本身是 Claude Code 的非阻擋錯誤，hook 內無法改成阻擋；本 fork 只能保證 hook 自己控制得到的失敗路徑（解析、載入、例外、子程序逾時）都 exit 2，並避免主動設定會提早觸發宿主逾時的短 timeout。
+
+## 2026-11-12：上游 PR #3901–#3923 與 issue #3903／#3905／#3922 分流；pr#3862、pr#3870 重審；commit 軸無新項
+
+### 一、起點與範圍
+- `python tools/check_upstream_updates.py --strict` 實跑回報：commit 軸 `d2ef268` 之後 behind 0（無新 commit，`git fetch upstream main` 取得的 tip 仍是 `d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`）；PR 軸 20 筆新項（#3901、#3902、#3904、#3906–#3921、#3923）；issue 軸 3 筆新項（#3903、#3905、#3922）；monitored 32 筆中 2 筆移動（pr#3862、pr#3870）。
+- 20 筆 PR 的 diff 以 `gh pr diff <n> --repo affaan-m/ECC` 唯讀取得並逐筆讀過；`gh pr view` 取 head、檔數與行數。全部為 OPEN，沒有已合併者，所以沒有可隨下次合併帶進來的內容，也沒有提前引用任何 open PR。
+
+### 二、PR 軸分流（20 筆）
+
+| PR | 狀態 | head | 規模 | 判定 | 理由與重看條件 |
+|---|---|---|---|---|---|
+| #3901 | OPEN | `7f379cb553f9decbba52c8c2ba3c0d7d6b8c959e` | 4 檔 +61/-7 | 不採用（等合併；釘 monitored） | grok 轉接器改用原生 realpath 讓 Windows npm lane 過；修的是 #3882（未合併、本 fork 未採用）引入的程式，另動 `quality-gate.js`。重看：#3882 或本 PR 合併。 |
+| #3902 | OPEN | `2b9c43b008c1f3857f47da61797d5900d5154c88` | 2 檔 +205/-2 | 不採用（等合併） | ecc2（Rust）session board 的 handoff 派送；本 fork 不建置 ecc2 為產品行為驗收範圍。 |
+| #3904 | OPEN | `b4a4b582d5befe60aed19d3a85dc5f070d781f26` | 1 檔 +93/-1 | 不採用（等合併） | ecc2 `store.rs` board 重寫；同上。 |
+| #3906 | OPEN | `d102c6af5da83d808c0f25d770f479586e56f3ac` | 1 檔 +28/-2 | 不採用（等合併） | ecc2 `store.rs` board 原子更新；同上。 |
+| #3907 | OPEN | `1b87fb3f432706fe5ff2daf97acdef8f37788dba` | 2 檔 +16/-1 | 不採用（等合併） | frontend-slides 技能文字（SKILL.md、STYLE_PRESETS.md），無程式。 |
+| #3908 | OPEN | `08bf8e18f7a46f8c960812d243201f00116c2a4e` | 2 檔 +51/-1 | 不採用（等合併） | OpenCode `run-tests.ts` 把 Vitest 檔案過濾改為位置參數；OpenCode 工具本 fork 不啟用。 |
+| #3909 | OPEN | `82bf65024fcc135aaa3f0fb77888ecb3b004793d` | 2 檔 +108/-116 | 不採用（等合併） | `session-manager.js` 保留完整 Markdown 段落；本 fork 目前沒有遇到實例。 |
+| #3910 | OPEN | `21ae946484cf9954a01357bbaf78ed89dc741773` | 2 檔 +224/-9 | 不採用（等合併） | `project-detect.js` 讀取所有 Go require；無本 fork 實例。 |
+| #3911 | OPEN | `6c1d7ae23fae92764254df07aaff9215f56eac27` | 4 檔 +878/-2 | 不採用（等合併） | Python LLM provider 請求移出事件迴圈（`executor.py`）；本 fork 不呼叫付費 provider。 |
+| #3912 | OPEN | `ca422f3c195f000a9a3bc15a45e697fa2ce33a87` | 2 檔 +136/-2 | 不採用（等合併） | `auto-update.js` 子程序被 signal 終止後停止；本 fork 不用 auto-update。 |
+| #3913 | OPEN | `436517dfc0060f4b2e77ffff15f388590c7e72bb` | 5 檔 +109/-8 | 不採用（等合併） | Python provider 依 HTTP 狀態分類 SDK 失敗；同 #3911。 |
+| #3914 | OPEN | `87b4eed5c1678e8a52376498f2ca98bd7ed04bce` | 2 檔 +94/-4 | 不採用（等合併） | `ecc-metrics-bridge.js` 追蹤 notebook 編輯；本 fork 不依賴該指標。 |
+| #3915 | OPEN | `3fffe12cd3f9ce6ccba1face410de946a579a69f` | 5 檔 +210/-14 | 不採用（等合併） | session 精確 ID 優先於較新的前綴匹配（4 個 JS 檔）；無本 fork 實例。 |
+| #3916 | OPEN | `8d0e58094cf72278dd61768210a42c46d2f1d836` | 3 檔 +73/-4 | 不採用（等合併） | `context-selection.js` 工作流程意圖變更時使 selection 失效；本 fork 的 context 驗證不受影響（F6 已共用單一 registry）。 |
+| #3917 | OPEN | `13710577330649bb1263336f1a60948302ae8c76` | 2 檔 +106/-0 | 不採用（等合併） | Ollama 原生 token 用量（Python）；同 #3911。 |
+| #3918 | OPEN | `96d99c2e289347002029885d74b4e48d9d37914e` | 2 檔 +138/-28 | 不採用（等合併；釘 monitored） | `validate-workflow-security.js` 補 workflow 安全繞過；與本 fork 的逐 job 官方 repo guard 同一主題，合併後須核對 guard 清冊仍通過。重看：合併。 |
+| #3919 | OPEN | `3d99184af705987f16de8be408f69a4889f51fc0` | 2 檔 +77/-7 | 不採用（等合併） | PostgreSQL ADD COLUMN 技能文字與範例 SQL。 |
+| #3920 | OPEN | `9a6e1d881a13091bef3663c852c209768cca6f95` | 7 檔 +418/-48 | 不採用（等合併） | PostgreSQL 欄位改名技能文字與範例 SQL，並更新 `pi-core.json`。 |
+| #3921 | OPEN | `322e347a86f206dff8063bfc330889087ed74c40` | 6 檔 +46/-5 | 不採用（等合併；釘 monitored） | GateGuard 增加 DROP DATABASE／DROP SCHEMA／ALTER TABLE 的首次接觸閘；與本 fork 的 GateGuard fail-closed 修正（bb514f87）同一檔案群，合併後須重跑 `safety-hooks-*` 測試。重看：合併。 |
+| #3923 | OPEN | `2d2d64408c5a00ba1282cba695442ee3889ce03d` | 2 檔 +72/-2 | 不採用（等合併） | `ck` 技能 `save.mjs` 避免重新 init 時清掉已存 session（對應 issue #3922）；本 fork 不用 ck。 |
+
+### 三、隱藏內容與危險片語掃描
+對 20 份 diff 的新增行掃描 `curl … | sh`、`iwr`、`iex`、`Invoke-Expression`、`dangerously`、`bypassPermissions`、`ignore previous`、`system prompt`、HTML 註解、`base64 -d`、`eval(`、零寬與雙向控制字元：**0 筆命中**。
+
+### 四、issue 軸（3 筆）
+| issue | 判定 | 理由 |
+|---|---|---|
+| #3903 | 不處理 | 標題只有「GateGuard f」，內文為空，無法判斷內容；若之後補完且描述 GateGuard 行為缺陷，再對照本 fork 的 GateGuard 測試。 |
+| #3905 | 不處理 | 外部使用者宣傳自己維護的 Antigravity／OpenCode 衍生 repo，內含外部連結；屬第三方內容，不讀取、不安裝、不採用。 |
+| #3922 | 不處理 | `ck` 技能重新 init 會清掉已存 session；本 fork 不用 ck；對應修正是 #3923（已判不採用）。 |
+
+### 五、monitored 重審（2 筆）
+
+| PR | 上游變更證據（舊 head → 新 head） | fork 影響、裁決維持理由與重看條件 |
+|---|---|---|
+| [#3862](https://github.com/affaan-m/ECC/pull/3862) | `01c2426b2ce80354baaa31fd134f1772e4007332` → `fc7ec24d567abaf5c6771efe20c901dbc3dcbd1a`。`gh api repos/affaan-m/ECC/compare/<舊>...<新>`：ahead 1，2 檔：`scripts/lib/gateguard-target-class.js` +1/-1、`tests/lib/gateguard-target-class.test.js` +18/-0。現為 4 檔，+110/-17。 | 只是在原有 GateGuard 目標分類上微調一行與補測試，裁決不變：不採用、等合併。合併後須重跑 GateGuard 與 `safety-hooks-*` 測試。 |
+| [#3870](https://github.com/affaan-m/ECC/pull/3870) | `882ba18c10064b7fd1be02a5a013d3b7655236f0` → `0b4560ef902cf01321af6d97c4bbfd8844e3c9d2`。compare：ahead 8，9 檔：`.github/PR_MODERATION.md` +19/-11、`.github/workflows/pr-burst-guard.yml` +3/-2、`CONTRIBUTING.md` +6/-3、`scripts/ci/pr-burst-guard.js` +29/-16、`scripts/lib/llm-summary.js` +3/-2、`tests/ci/pr-burst-guard-workflow.test.js` +70/-2、`tests/ci/pr-burst-guard.test.js` +76/-14、`tests/hooks/session-end.test.js` +12/-0、`tests/lib/llm-summary.test.js` +9/-0。現為 4 檔，+148/-5。 | 增量多數是上游自己的 PR 治理 workflow（本 fork 以官方 repo guard 隔離，不執行），與 `llm-summary.js` 小改；裁決不變：不採用、等合併。 |
+
+- **新釘 monitored**（3 筆）：`pr#3901`、`pr#3918`、`pr#3921`。重釘 `pr#3862`、`pr#3870` 的 head。monitored 共 35 筆。
+
+### 六、水位
+commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewed_pr_through` 推進至 **3923**；issue `reviewed_issue_through` 推進至 **3922**；`reviewed_date` 為 **2026-11-12**。未移植任何產品碼。
