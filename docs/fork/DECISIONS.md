@@ -719,7 +719,7 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 
 ## 2026-11-12：Windows 格式化 hook 支援含空白與特殊字元的路徑（覆核 F4）
 
-**根因**：`stop-format-typecheck.js`（已註冊的 Stop hook）把空白列為 unsafe，路徑含空白（如 `C:\Users\John Doe\...`）時整批略過格式化；`post-edit-format.js`（舊式、未註冊）允許空白，卻以 `spawnSync(shim, argsArray, { shell: true })` 啟動 `.cmd`，陣列在 `shell: true` 下不會加引號，`two words.js` 被拆成兩個參數（Node 同時報 DEP0190）。
+**根因**：`stop-format-typecheck.js`（已註冊的 Stop hook）把空白列為 unsafe，路徑含空白（例如使用者目錄名稱含空白）時整批略過格式化；`post-edit-format.js`（舊式、未註冊）允許空白，卻以 `spawnSync(shim, argsArray, { shell: true })` 啟動 `.cmd`，陣列在 `shell: true` 下不會加引號，`two words.js` 被拆成兩個參數（Node 同時報 DEP0190）。
 
 **修法**：新增 fork 自有模組 `scripts/lib/windows-cmd.js`，沿用 `pre-bash-commit-quality.js` 已驗證的做法：每個 token（shim 本身與每個參數）各放一個環境變數，cmd 命令列只含加引號的 `%NAME%` 參照，`shell: false`、`/d /v:off /s /c`。值不會變成 cmd 原始碼，所以 `& | < > ^ ( ) ! ; %` 與空白都保持字面；只有可能跳出引號的 `"`、NUL、CR、LF 才拒絕（Windows 路徑本來就不可能有），拒絕時略過該批並說明原因。兩支 hook 改用它，移除各自的 `UNSAFE_PATH_CHARS`。
 
