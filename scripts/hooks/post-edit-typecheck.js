@@ -9,9 +9,42 @@
  * and reports only errors related to the edited file.
  */
 
-const { execFileSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { buildCmdShimInvocation, isWindowsCmdShim } = require("../lib/windows-cmd");
+
+const TSC_ARGS = ["--noEmit", "--pretty", "false"];
+
+// Prefer the project's own TypeScript (run through this Node, no shell, no
+// .cmd shim); otherwise fall back to npx, which on Windows is a .cmd shim that
+// execFile cannot launch directly.
+function findLocalTsc(startDir) {
+  let dir = startDir;
+  for (let depth = 0; depth < 20; depth++) {
+    const candidate = path.join(dir, "node_modules", "typescript", "bin", "tsc");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+function runTsc(cwd) {
+  const options = { cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 30000 };
+  const localTsc = findLocalTsc(cwd);
+  if (localTsc) {
+    return spawnSync(process.execPath, [localTsc, ...TSC_ARGS], options);
+  }
+  const npxBin = process.platform === "win32" ? "npx.cmd" : "npx";
+  const args = ["tsc", ...TSC_ARGS];
+  if (isWindowsCmdShim(npxBin)) {
+    const invocation = buildCmdShimInvocation(npxBin, args, options);
+    return spawnSync(invocation.command, invocation.args, invocation.options);
+  }
+  return spawnSync(npxBin, args, options);
+}
 
 const MAX_DIRECT_STDIN_BYTES = 16 * 1024 * 1024;
 let data = "";
@@ -59,18 +92,21 @@ process.stdin.on("end", () => {
       }
 
       if (fs.existsSync(path.join(dir, "tsconfig.json"))) {
-        try {
-          // Use npx.cmd on Windows to avoid shell: true which enables command injection
-          const npxBin = process.platform === "win32" ? "npx.cmd" : "npx";
-          execFileSync(npxBin, ["tsc", "--noEmit", "--pretty", "false"], {
-            cwd: dir,
-            encoding: "utf8",
-            stdio: ["pipe", "pipe", "pipe"],
-            timeout: 30000,
-          });
-        } catch (err) {
+        const result = runTsc(dir);
+        if (result.error) {
+          // The check never ran (not installed, cannot launch, timed out):
+          // say so instead of looking like a clean result.
+          console.error("[Hook] TypeScript check was not run: " + result.error.message);
+        } else if (result.status !== 0) {
           // tsc exits non-zero when there are errors — filter to edited file
-          const output = (err.stdout || "") + (err.stderr || "");
+          const output = (result.stdout || "") + (result.stderr || "");
+          if (!/error TS\d+/.test(output)) {
+            const firstLine = output.split("\n").find((line) => line.trim()) || "";
+            console.error(
+              "[Hook] TypeScript check failed without diagnostics (exit " +
+                result.status + "): " + firstLine.trim(),
+            );
+          }
           // Compute paths that uniquely identify the edited file.
           // tsc output uses paths relative to its cwd (the tsconfig dir),
           // so check for the relative path, absolute path, and original path.

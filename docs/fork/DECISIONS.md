@@ -736,3 +736,13 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **測試與量測**：新增 `tests/ci/context-profiles-registry-reuse.test.js`（3 項）：`validate()` 只載入 registry 1 次（修前 35 次，紅）、共享 registry 的 plan digest 與獨立編譯同一組完全相同、未知 target／profile 仍拋錯；另在 `tests/ci/context-profiles.test.js` 斷言訊息加上 `status／signal／error.code／elapsedMs`，逾時不再只剩 `null !== 0`（60 秒上限沒有放寬）。同機同負載前後：`validate-context-profiles.js` 修前 96.7 秒（35 次載入）→ 修後 1.7 秒（1 次載入）；34 個投影結果、`planDigest` 不變。`context` 相關 84 項測試全綠。報告另建議的「外層 runner deadline 大於內層預算」未做（沒有可獨立量測的失敗證據）。
 
 **上游**：`upstream/main` 仍為 `d2ef2680`，同檔未修；本機最小修正。
+
+## 2026-11-12：舊式 post-edit-typecheck 在 Windows 能啟動 tsc，啟動失敗要明確報錯（覆核 F5）
+
+**根因**：`scripts/hooks/post-edit-typecheck.js`（舊式，目前出貨的 `hooks/hooks.json` 未註冊；現行 Stop 的 typecheck 是 `stop-format-typecheck.js`）在 Windows 用 `execFileSync('npx.cmd', ...)`，Node 無法直接啟動 `.cmd`（`EINVAL`，CVE-2024-27980 後的行為），而 catch 把「啟動失敗」當成「tsc 回報型別錯誤」，過濾不出該檔的診斷就什麼都不輸出，外層 status 0、stderr 空白：沒跑的檢查看起來和乾淨一樣。
+
+**修法**：改用 `spawnSync` 並區分三種結果。專案本機的 `node_modules/typescript/bin/tsc` 存在就以 `process.execPath` 直接執行（不經 shell、不經 shim）；否則 Windows 走 `scripts/lib/windows-cmd.js`（F4 新增）啟動 `npx.cmd`，其他平台照舊 `npx`。`result.error`（無法啟動、逾時）輸出 `[Hook] TypeScript check was not run: <原因>`；tsc 非零退出但輸出沒有任何 `error TS` 診斷時輸出 `[Hook] TypeScript check failed without diagnostics (exit N): <第一行>`；有診斷才照原本過濾出該檔的錯誤。hook 本身仍不阻擋。
+
+**測試**：新增 `tests/hooks/post-edit-typecheck.test.js`（3 項）：Windows 上放真的 `npx.cmd` 假 shim（印出 TS2322 診斷並 exit 2）驗證診斷被轉出；PATH 中沒有 npx 時必須報 not run／without diagnostics（任何平台）；stdin 仍原樣傳回。修前前兩項紅（stderr 空白），修後綠。未啟動真的 tsc、未下載套件。
+
+**上游**：`upstream/main` 仍為 `d2ef2680`，未修；本機最小修正。
