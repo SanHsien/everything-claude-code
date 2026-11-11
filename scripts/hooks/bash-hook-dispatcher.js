@@ -8,6 +8,8 @@ const {
   combineAdditionalContext,
 } = require('./pretooluse-visible-output');
 
+const { isSafetyHookActive, payloadProblem, safetyBlock } = require('./safety-hooks');
+
 const { run: runBlockNoVerify } = require('./block-no-verify');
 const { run: runAutoTmuxDev } = require('./auto-tmux-dev');
 const { run: runTmuxReminder } = require('./pre-bash-tmux-reminder');
@@ -24,6 +26,7 @@ const PRE_BASH_HOOKS = [
   {
     id: 'pre:bash:block-no-verify',
     profiles: 'minimal,standard,strict',
+    safety: true,
     run: rawInput => runBlockNoVerify(rawInput),
   },
   {
@@ -48,6 +51,7 @@ const PRE_BASH_HOOKS = [
   {
     id: 'pre:bash:gateguard-fact-force',
     profiles: 'standard,strict',
+    safety: true,
     run: rawInput => runGateGuard(rawInput),
   },
 ];
@@ -144,6 +148,17 @@ function runHooks(rawInput, hooks) {
       }
     } catch (error) {
       stderr += `[Hook] ${hook.id} failed: ${error.message}\n`;
+      if (hook.safety && isSafetyHookActive(hook.id)) {
+        // A security sub-hook that threw never reached a decision: block
+        // rather than continue the chain and allow.
+        const block = safetyBlock(hook.id, error.message);
+        return {
+          output: '',
+          stderr: stderr + `${block.stderr}\n`,
+          additionalContext,
+          exitCode: block.exitCode,
+        };
+      }
     }
   }
 
@@ -160,6 +175,18 @@ function runHooks(rawInput, hooks) {
 }
 
 function runPreBash(rawInput) {
+  // An enabled security sub-hook cannot inspect a request it cannot parse, so
+  // the whole pre-Bash chain blocks instead of each hook's parse-error allow.
+  const guard = PRE_BASH_HOOKS.find(
+    hook => hook.safety && isHookEnabled(hook.id, { profiles: hook.profiles }) && isSafetyHookActive(hook.id)
+  );
+  if (guard) {
+    const problem = payloadProblem(rawInput);
+    if (problem) {
+      const block = safetyBlock(guard.id, problem);
+      return { output: '', stderr: `${block.stderr}\n`, additionalContext: '', exitCode: block.exitCode };
+    }
+  }
   return runHooks(rawInput, PRE_BASH_HOOKS);
 }
 
@@ -197,7 +224,8 @@ async function main() {
 if (require.main === module) {
   main().catch(error => {
     process.stderr.write(`[Hook] bash-hook-dispatcher failed: ${error.message}\n`);
-    process.exit(0);
+    // Pre-Bash carries the security hooks: an unexpected failure must block.
+    process.exit(process.argv[2] === 'post' ? 0 : 2);
   });
 }
 

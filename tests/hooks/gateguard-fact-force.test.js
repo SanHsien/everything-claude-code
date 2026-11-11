@@ -1610,15 +1610,16 @@ function runTests() {
     passed++;
   else failed++;
 
-  // --- Test 20: malformed JSON passes through unchanged ---
+  // --- Test 20: malformed JSON fails closed (fork: security hooks must not allow what they cannot inspect) ---
   clearState();
   if (
-    test('passes malformed JSON input through unchanged', () => {
+    test('blocks (exit 2) malformed JSON input instead of passing it through', () => {
       const rawInput = '{ not valid json';
       const result = runHook(rawInput);
 
-      assert.strictEqual(result.code, 0, 'exit code should be 0');
-      assert.strictEqual(result.stdout, rawInput, 'malformed JSON should pass through unchanged');
+      assert.strictEqual(result.code, 2, 'exit code should be 2 (block)');
+      assert.match(result.stderr, /BLOCKED/, 'stderr should say why the request was blocked');
+      assert.strictEqual(result.stdout, '', 'malformed JSON must not be echoed to stdout');
     })
   )
     passed++;

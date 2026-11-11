@@ -16,6 +16,7 @@ const { isHookEnabled, isDryRun } = require('../lib/hook-flags');
 const { isBenignStdinPipeError, readStdinRaw: readBoundedStdin, resolveMaxStdin } = require('./hook-input');
 const { buildPreToolUseAdditionalContext } = require('./pretooluse-visible-output');
 const { createHookContextScanner } = require('./hook-input-limits');
+const { isSafetyHookActive, payloadProblem, resolveSafetyExit, safetyBlock } = require('./safety-hooks');
 
 const GATEGUARD_HOOKS = new Set([
   'pre:bash:gateguard-fact-force',
@@ -115,6 +116,21 @@ function resolveHookResult(output) {
   }
 
   return { stdout: '', exitCode: 0 };
+}
+
+/**
+ * A hook could not run to a decision. Security hooks fail closed (exit 2,
+ * which Claude Code treats as a block); everything else keeps its
+ * non-interrupting fallback exit code.
+ */
+function exitOnHookFailure(hookId, detail, fallbackExitCode = 0) {
+  if (isSafetyHookActive(hookId)) {
+    const block = safetyBlock(hookId, detail);
+    writeStderr(block.stderr);
+    exitWithStdout(block.stdout, block.exitCode);
+    return;
+  }
+  exitWithStdout('', fallbackExitCode);
 }
 
 function resolveLegacySpawnStdout(result) {
@@ -232,13 +248,13 @@ async function main() {
   // Prevent path traversal outside the plugin root
   if (!scriptPath.startsWith(resolvedRoot + path.sep)) {
     process.stderr.write(`[Hook] Path traversal rejected for ${hookId}: ${scriptPath}\n`);
-    exitWithStdout('', 0);
+    exitOnHookFailure(hookId, 'script path escapes the plugin root');
     return;
   }
 
   if (!fs.existsSync(scriptPath)) {
     process.stderr.write(`[Hook] Script not found for ${hookId}: ${scriptPath}\n`);
-    exitWithStdout('', 0);
+    exitOnHookFailure(hookId, 'hook script not found');
     return;
   }
 
@@ -247,6 +263,17 @@ async function main() {
     writeStderr(truncationBlock.stderr);
     exitWithStdout(truncationBlock.stdout, truncationBlock.exitCode);
     return;
+  }
+
+  // Security hooks need a complete, well-formed request. An input they cannot
+  // parse is a request they cannot inspect: block instead of letting each
+  // hook's own parse-error fallback allow it.
+  if (!truncated && isSafetyHookActive(hookId)) {
+    const problem = payloadProblem(raw);
+    if (problem) {
+      exitOnHookFailure(hookId, problem);
+      return;
+    }
   }
 
   // Prefer direct require() when the hook exports a run(rawInput) function.
@@ -297,7 +324,7 @@ async function main() {
       exitWithStdout(sanitizeEcho(result.stdout), result.exitCode);
     } catch (runErr) {
       process.stderr.write(`[Hook] run() error for ${hookId}: ${runErr.message}\n`);
-      exitWithStdout('', 0);
+      exitOnHookFailure(hookId, `run() threw: ${runErr.message}`);
     }
     return;
   }
@@ -315,7 +342,7 @@ async function main() {
   const remaining = deadline - Date.now();
   if (remaining <= 0) {
     writeStderr(`[Hook] lifecycle time budget exhausted for ${hookId}; skipping legacy hook`);
-    exitWithStdout('', 0);
+    exitOnHookFailure(hookId, 'lifecycle time budget exhausted');
     return;
   }
   const result = spawnSync(process.execPath, [scriptPath], {
@@ -337,6 +364,15 @@ async function main() {
   const legacyStdout = sanitizeEcho(resolveLegacySpawnStdout(result));
   if (result.stderr) process.stderr.write(result.stderr);
 
+  if (isSafetyHookActive(hookId)) {
+    // Only the child's own exit 0 / exit 2 is a decision; exit 1 would be a
+    // non-blocking error to Claude Code.
+    const verdict = resolveSafetyExit(result, hookId);
+    if (verdict.exitCode === 2 && verdict.stderr) writeStderr(verdict.stderr);
+    exitWithStdout(legacyStdout, verdict.exitCode);
+    return;
+  }
+
   if (!isBenignStdinPipeError(result) && (result.error || result.signal || result.status === null)) {
     const failureDetail = result.error ? result.error.message : result.signal ? `terminated by signal ${result.signal}` : 'missing exit status';
     writeStderr(`[Hook] legacy hook execution failed for ${hookId}: ${failureDetail}`);
@@ -349,5 +385,10 @@ async function main() {
 
 main().catch(err => {
   process.stderr.write(`[Hook] run-with-flags error: ${err.message}\n`);
+  const hookId = process.argv[2];
+  if (isSafetyHookActive(hookId)) {
+    process.stderr.write(`${safetyBlock(hookId, `runner error: ${err.message}`).stderr}\n`);
+    process.exit(2);
+  }
   process.exit(0);
 });

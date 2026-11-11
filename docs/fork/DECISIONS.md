@@ -675,3 +675,17 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **根因**：`scripts/ci/audit-closed-references.js` 只稽核 30 天窗口（`DEFAULT_WINDOW_DAYS`）內關閉的 issue。寫死的 10-11 在 2026-11-10 滿 30 天，issue 被窗口濾掉，稽核變成「0 claim 全清」，`/Delivered through #3500/` 比對失敗。f559e9be 當時（窗口內）綠，之後只是日曆到期，與 5cd0867f 的文件變更無關；與網路、環境變數、執行順序無關。同檔的 101 PR fixture 早就用 `new Date()`，故不受影響。
 
 **上游**：上游 `affaan-m/ECC` main 的同檔（2026-11-10 以 `gh api` 取得）仍是同樣寫死日期，尚未修；此為本 fork 對上游持有檔的最小本機修正，上游修了或改寫此檔時以上游版為準。
+
+## 2026-11-12：安全類 hook 解析／執行失敗時改為 fail-closed（覆核 F1）
+
+**根因**：Claude Code 對 PreToolUse 的退出碼只有 2 代表阻擋，0 放行，其餘非零是「非阻擋錯誤」（工具照跑）。上游的 `run-with-flags.js`、`bash-hook-dispatcher.js`、`plugin-hook-bootstrap.js` 在「檢查沒做完」時一律走 `exit 0`（腳本不存在、`run()` 拋例外、spawn 逾時／被 signal 終止）或 `exit 1`（舊式子程序失敗），而 GateGuard 與 config-protection 對無法解析的 JSON 自己回「放行」。結果是啟用中的安全 hook 在無法完成檢查時等於沒擋。覆核重現：`tool_name` 為數字時 GateGuard 拋 `rawToolName.toLowerCase is not a function` 卻 status 0；啟用中的 GateGuard 指向不存在模組 status 0；`pre-bash-dispatcher.js` 收到 `{` 後 EOF status 0 且無診斷；dispatcher 注入 block-no-verify 例外後 exitCode 0。
+
+**修法**：新增 fork 自有模組 `scripts/hooks/safety-hooks.js`，集中「哪些是安全 hook」（`pre:bash:block-no-verify`、三個 `*:gateguard-fact-force`、`pre:config-protection`）與判定函式；`mcp-health-check` 不列入（它是可用性檢查，且已有 `ECC_MCP_HEALTH_FAIL_OPEN` 明示開關），提示、記錄、格式化、commit-quality 等維持不打斷。
+
+- `run-with-flags.js`：安全 hook 啟用時，輸入須是完整 JSON 物件且 `tool_name` 若存在必為字串，否則 exit 2 並說明原因；腳本不存在、路徑逃出 plugin root、`run()` 拋例外、runner 本身例外、舊式子程序的 spawn 錯誤／逾時／signal／status 非 0 或 2，一律 exit 2（原本是 0 或 1）。GateGuard 的專用關閉（`ECC_GATEGUARD=off`、`GATEGUARD_DISABLED=1`）與 profile／`ECC_DISABLED_HOOKS` 停用仍照舊放行，因為那是使用者明示關閉，不是失敗。
+- `bash-hook-dispatcher.js`：block-no-verify 與 GateGuard 子 hook 標 `safety`，其例外回 exit 2；`runPreBash` 在有啟用的安全子 hook 時先驗輸入；pre 模式的未預期例外 exit 2（post 維持 0）。`pre-bash-dispatcher.js` 本來就 catch 後 exit 2，經 `runPreBash` 取得輸入驗證。
+- `plugin-hook-bootstrap.js`：入口為 `pre-bash-dispatcher.js` 或 `run-with-flags.js` 加安全 hook id 時，缺參數、未知 mode、路徑解析失敗、spawn 錯誤／逾時（30 秒）／signal／status 非 0 或 2 都 exit 2；伴隨 EPIPE／EOF 但有真實 status 的情形（2026-11-04 條目）仍採子程序自己的 status。非安全入口維持原行為。
+
+**測試**：新增 `tests/hooks/safety-hooks-fail-closed.test.js`（17 項，涵蓋非字串 `tool_name`、半截 JSON、非物件 JSON、config-protection 無效 JSON、缺腳本、`run()` 拋例外、舊式子程序逾時、dispatcher 例外、bootstrap exit 1／0／2、逾時與 signal 的判定函式，以及非安全 hook 與已明示停用者維持放行）。修前 11 項紅、修後全綠。`tests/hooks/gateguard-fact-force.test.js` 的「malformed JSON passes through unchanged」原本把 fail-open 當規格釘住，改為「exit 2、stderr 含 BLOCKED、stdout 空」。
+
+**範圍界線**：只處理 Claude Code PreToolUse 路徑。`.cursor/hooks/before-shell-execution.js` 等其他宿主的 hook 協定不同，未動。**上游**：2026-11-12 `git fetch upstream` 的 `upstream/main` 仍為 `d2ef2680`（本 fork 水位），上游尚未修；這是對上游持有檔（上述三支加兩個測試）的本機最小修正，上游修了或改寫這些檔時以上游版為準並保留 `safety-hooks.js` 的測試意圖。

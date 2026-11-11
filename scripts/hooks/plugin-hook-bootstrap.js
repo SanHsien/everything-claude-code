@@ -10,6 +10,7 @@ const { resolveWindowsBashCandidates } = require('../lib/windows-bash');
 const { isBenignStdinPipeError, readStdinRaw: readBoundedStdin, resolveMaxStdin } = require('./hook-input');
 
 const { createHookContextScanner } = require('./hook-input-limits');
+const { isSafetyEntrypoint, resolveSafetyExit, safetyBlock } = require('./safety-hooks');
 
 const SHELL_PROBE_TIMEOUT_MS = 2000;
 
@@ -269,10 +270,21 @@ async function main() {
     process.env.QODER_PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || process.env.ECC_PLUGIN_ROOT
   );
 
+  // Security hooks fail closed (exit 2 = block in Claude Code); every other
+  // hook keeps the non-interrupting exit 0 fallbacks below.
+  const safety = isSafetyEntrypoint(relPath, args);
+  const failOnSafety = detail => {
+    if (!safety) return false;
+    writeStderr(`${safetyBlock(args[0] || relPath, detail).stderr}\n`);
+    process.exitCode = 2;
+    return true;
+  };
+
   if (!mode || !relPath || !rootDir) {
     writeStderr(
       '[Hook] bootstrap: missing required args (mode/relPath/rootDir); emitting empty stdout\n'
     );
+    if (failOnSafety('missing required bootstrap args')) return;
     process.exitCode = 0;
     return;
   }
@@ -289,17 +301,26 @@ async function main() {
       result = spawnShell(rootDir, relPath, raw, args, { maxStdin, truncated, hookContext });
     } else {
       writeStderr(`[Hook] unknown bootstrap mode: ${mode}; emitting empty stdout\n`);
+      if (failOnSafety(`unknown bootstrap mode ${mode}`)) return;
       process.exitCode = 0;
       return;
     }
   } catch (error) {
     writeStderr(`[Hook] bootstrap resolution failed: ${error.message}; emitting empty stdout\n`);
+    if (failOnSafety(`bootstrap resolution failed: ${error.message}`)) return;
     process.exitCode = 0;
     return;
   }
 
   passthrough(result);
   writeStderr(result.stderr);
+
+  if (safety) {
+    const verdict = resolveSafetyExit(result, args[0] || relPath);
+    if (verdict.exitCode === 2 && verdict.stderr) writeStderr(`${verdict.stderr}\n`);
+    process.exitCode = verdict.exitCode;
+    return;
+  }
 
   // EPIPE with a real exit status: the child finished without reading stdin.
   // Forward its status instead of failing open (which would swallow exit 2 blocks).
@@ -327,6 +348,12 @@ async function main() {
 if (require.main === module || require.main === undefined) {
   main().catch(error => {
     writeStderr(`[Hook] bootstrap failed: ${error.message}\n`);
+    const [, , , relPath, ...args] = process.argv;
+    if (isSafetyEntrypoint(relPath, args)) {
+      writeStderr(`${safetyBlock(args[0] || relPath, `bootstrap failed: ${error.message}`).stderr}\n`);
+      process.exitCode = 2;
+      return;
+    }
     process.exitCode = 0;
   });
 }
