@@ -701,3 +701,18 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **本機失敗紀錄（未修，依裁決只記錄）**：`ECC_TEST_JOBS=4` 平行跑 install 相關測試時，`lib/install-state.test.js` 的「concurrent writeInstallState calls always leave a complete valid state」在本機 Windows 重現 `EPERM: rename ... .ecc-install-state.json.<pid>.<id>.tmp -> ecc-install-state.json`（`scripts/lib/atomic-write.js:89`），單檔重跑 10 項全過；`lib/install-executor.test.js` 同輪因 `.opencode/dist/index.js` 不存在（`ENOENT copyfile`，該檔需先建置）失敗，單檔重跑 26 項全過。兩者與本次變更無關，也沒有捕獲鎖持有者或防毒狀態，維持 2026-11-03 條目的判斷：不放寬斷言、不修產品碼，計入勝負的是 fork CI。
 
 **上游**：`upstream/main` 仍為 `d2ef2680`，同檔未修；這是對上游持有檔 `scripts/lib/install/apply.js` 的最小接線修正，其餘邏輯在 fork 自有的新檔。上游修了或改寫此段時以上游版為準。
+
+## 2026-11-12：Cursor `hooks.json` 重裝／repair／uninstall 改為合併，保留使用者加入的 hook（覆核 F3）
+
+**根因**：`.cursor/hooks.json` 以受管 `copy-file` 記錄，只有「ledger 記錄為受管」的判斷（`prepareUserOwnedFileGuard`）。一旦首次安裝寫入，檔案就整份視為 ECC 所有：之後使用者往同一檔加自己的 hook，重裝與 repair 整檔 `copyFileSync` 覆蓋，uninstall 在內容與記錄 digest 相符時整檔刪除。覆核探針：ledger digest 與現況不同，`prepareUserOwnedFileGuard()` 仍是 applied 1／skipped 0（Codex 的使用者設定檔有 digest 保護，Cursor hooks 沒有）。
+
+**修法**：新增 fork 自有模組 `scripts/lib/install/cursor-hooks-merge.js`。ECC 擁有的條目定義為 `command` 以 `node .cursor/hooks/` 開頭者（ECC 自己安裝的腳本目錄；實查出貨的 `.cursor/hooks.json` 15 個事件的 command 全部符合）；其餘一律是使用者的。
+- 重裝（`apply.js`）與 repair（`install-lifecycle.js` 的 `repairCopyFile`）：對已存在的檔案，每個事件放 ECC 來源條目、再接使用者條目；來源沒有的事件與頂層其他鍵原樣保留；來源裡已不存在的舊 ECC 條目移除，因此重複重裝是冪等的（出貨檔實測 `merge(merge(x,x),x) === merge(x,x)`）。檔案不存在時仍整份寫入來源。既有檔案無法解析為 JSON 物件時拋錯、不覆寫。
+- uninstall（`uninstallCopyFile`）：只移除 ECC 條目，使用者條目與其他鍵留下；只剩 ECC 內容時照舊刪檔；無法解析時保留該檔。
+- ledger 仍是 `copy-file`，記錄的 digest 是合併後內容，所以 doctor 在無額外編輯時為 ok；使用者之後再加 hook 時 doctor 會報 drifted，由 repair 合併處理，不會蓋掉。
+
+**未處理（另記）**：首次安裝時若 `.cursor/hooks.json` 已存在但不在 ledger（使用者自己的檔），沿用既有行為——跳過並警告，不合併也不安裝 ECC hook；這是另一個決策，未在本次改動範圍。
+
+**測試**：新增 `tests/lib/install-cursor-hooks-merge.test.js`（7 項：首次安裝、重裝保留使用者 hook 且 ECC 不重複、ECC 定義更新不重複、repair 保留、uninstall 只移除 ECC、僅 ECC 時整檔刪除、無法解析的檔案不被覆寫）。修前 5 項紅、修後全綠；`lib/install*` 18 個檔 311 項、`scripts/uninstall`／`repair`／`doctor` 全綠。
+
+**上游**：`upstream/main` 仍為 `d2ef2680`，未修；對上游持有檔 `apply.js`、`install-lifecycle.js` 為最小接線，邏輯在新檔。上游修了或改寫時以上游版為準。

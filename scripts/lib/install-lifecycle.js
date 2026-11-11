@@ -38,6 +38,11 @@ const {
   validateManagedHooks,
 } = require('./install/claude-settings');
 const { transformInstallContent } = require('./install/content-transform');
+const {
+  isCursorHooksOperation,
+  mergeCursorHooksConfig,
+  stripEccHooksConfig,
+} = require('./install/cursor-hooks-merge');
 const { buildInstallIndex, rewriteRelativeLinks } = require('./install/link-rewrite');
 const { getInstallTargetAdapter, listInstallTargetAdapters } = require('./install-targets/registry');
 const { resolveInvocationEnvironment } = require('./invocation-environment');
@@ -318,6 +323,24 @@ function repairCopyFile(repoRoot, operation, trustedRoot, options) {
     throw new Error(`Missing source file for repair: ${sourcePath || operation.sourceRelativePath}`);
   }
 
+  if (isCursorHooksOperation(operation)) {
+    // Shared config: restore ECC's entries and keep the user's own hooks.
+    const existingDestination = getContainedExistingPath(operation.destinationPath, trustedRoot, 'repair');
+    const existingText = existingDestination
+      ? readFileNoFollow(getManagedDestination(existingDestination, trustedRoot, 'repair').managedPath, 'utf8')
+      : null;
+    const source = readFileWithMetadataNoFollow(sourcePath, 'utf8');
+    writeContainedFile(
+      operation.destinationPath,
+      mergeCursorHooksConfig(existingText, source.content),
+      trustedRoot,
+      'repair',
+      source.mode & 0o777,
+      options.writeOptions
+    );
+    return operation.destinationPath;
+  }
+
   if (operation.contentTransform || isMarkdownPath(operation.destinationPath)) {
     const source = readFileWithMetadataNoFollow(sourcePath, 'utf8');
     writeContainedFile(
@@ -507,7 +530,32 @@ function retainDriftedCopy(operation, trustedRoot) {
   return null;
 }
 
+function uninstallCursorHooks(operation, trustedRoot) {
+  const existingDestination = getContainedExistingPath(
+    operation.destinationPath,
+    trustedRoot,
+    'uninstall',
+    { allowFinalSymlink: true }
+  );
+  if (!existingDestination) return uninstallNoop();
+  let remaining;
+  try {
+    remaining = stripEccHooksConfig(
+      readFileNoFollow(getManagedDestination(existingDestination, trustedRoot, 'uninstall').managedPath, 'utf8')
+    );
+  } catch (_error) {
+    // Not a hooks config ECC can interpret: leave the user's file alone.
+    return uninstallRetained(operation);
+  }
+  if (remaining === null) return uninstallRemovePath(operation, trustedRoot);
+  writeContainedFile(operation.destinationPath, remaining, trustedRoot, 'uninstall');
+  return { removedPaths: [], cleanupTargets: [] };
+}
+
 function uninstallCopyFile(operation, trustedRoot, options) {
+  if (isCursorHooksOperation(operation)) {
+    return uninstallCursorHooks(operation, trustedRoot);
+  }
   if (options.preserveDriftedCopies) {
     const retained = retainDriftedCopy(operation, trustedRoot);
     if (retained) return retained;

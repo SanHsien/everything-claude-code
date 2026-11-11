@@ -67,6 +67,7 @@ const {
   mergeMcpConfig,
   withPreservedUserMcpServers,
 } = require('./mcp-user-servers');
+const { isCursorHooksOperation, mergeCursorHooksConfig } = require('./cursor-hooks-merge');
 
 function isMarkdownPath(filePath) {
   return /\.(md|mdx|markdown)$/i.test(String(filePath || ''));
@@ -950,6 +951,18 @@ function applyInstallPlanLocked(rawPlan, dependencies = {}, settingsLockHeld = f
         const sourceConfig = readJsonObject(operation.sourcePath, 'MCP config');
         const filteredConfig = filterMcpConfig(sourceConfig, disabledServers).config;
         fs.writeFileSync(operation.destinationPath, formatJson(filteredConfig), 'utf8');
+        writtenDestinations.add(operation.destinationPath);
+        continue;
+      }
+
+      if (isCursorHooksOperation(operation) && fs.existsSync(operation.destinationPath)) {
+        // Shared config: refresh ECC's entries, keep whatever the user added.
+        // An unparsable existing file throws instead of being overwritten.
+        const merged = mergeCursorHooksConfig(
+          fs.readFileSync(operation.destinationPath, 'utf8'),
+          fs.readFileSync(operation.sourcePath, 'utf8')
+        );
+        fs.writeFileSync(operation.destinationPath, merged, 'utf8');
         writtenDestinations.add(operation.destinationPath);
         continue;
       }
