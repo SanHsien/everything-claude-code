@@ -15,6 +15,7 @@
  */
 
 const { isBenignStdinPipeError } = require('./hook-input');
+const { isHookEnabled } = require('../lib/hook-flags');
 
 /** Hook ids that enforce a security boundary on PreToolUse. */
 const GATEGUARD_HOOK_IDS = Object.freeze([
@@ -55,11 +56,42 @@ function normalizeRel(relPath) {
   return String(relPath || '').replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
-/** Does this bootstrap invocation (relPath + args) run a security hook? */
+/**
+ * The security sub-hooks the pre-Bash dispatcher runs, with the profiles each
+ * is registered for. bash-hook-dispatcher.js must declare the same ids and
+ * profiles (a test pins that); they live here so the dispatcher entry point can
+ * decide whether anything security-relevant is enabled without first loading
+ * the (possibly broken) sub-hook modules.
+ */
+const PRE_BASH_DISPATCHER_ID = 'pre:bash:dispatcher';
+const PRE_BASH_DISPATCHER_PROFILES = 'minimal,standard,strict';
+const PRE_BASH_SAFETY_HOOKS = Object.freeze([
+  Object.freeze({ id: 'pre:bash:block-no-verify', profiles: 'minimal,standard,strict' }),
+  Object.freeze({ id: 'pre:bash:gateguard-fact-force', profiles: 'standard,strict' })
+]);
+
+/** Is at least one pre-Bash security sub-hook switched on? */
+function hasActivePreBashSafetyHook(env = process.env) {
+  return PRE_BASH_SAFETY_HOOKS.some(hook => (
+    isSafetyHookActive(hook.id, env) && isHookEnabled(hook.id, { profiles: hook.profiles, env })
+  ));
+}
+
+/**
+ * Does this bootstrap invocation (relPath + args) run a security hook that is
+ * currently switched on? A hook the user disabled (ECC_DISABLED_HOOKS, profile,
+ * ECC_GATEGUARD=off) is not a security check any more, so its failure must not
+ * block: the BLOCKED message tells people to disable the hook.
+ */
 function isSafetyEntrypoint(relPath, args = []) {
   const rel = normalizeRel(relPath);
-  if (rel === PRE_BASH_DISPATCHER_REL) return true;
-  if (rel === RUN_WITH_FLAGS_REL) return isSafetyHookActive(args[0]);
+  if (rel === PRE_BASH_DISPATCHER_REL) {
+    return isHookEnabled(PRE_BASH_DISPATCHER_ID, { profiles: PRE_BASH_DISPATCHER_PROFILES })
+      && hasActivePreBashSafetyHook();
+  }
+  if (rel === RUN_WITH_FLAGS_REL) {
+    return isSafetyHookActive(args[0]) && isHookEnabled(args[0], { profiles: args[2] });
+  }
   return false;
 }
 
@@ -121,7 +153,11 @@ function resolveSafetyExit(result, hookId = 'security hook') {
 
 module.exports = {
   GATEGUARD_HOOK_IDS,
+  PRE_BASH_DISPATCHER_ID,
+  PRE_BASH_DISPATCHER_PROFILES,
+  PRE_BASH_SAFETY_HOOKS,
   SAFETY_HOOK_IDS,
+  hasActivePreBashSafetyHook,
   isGateGuardDisabledByEnv,
   isSafetyEntrypoint,
   isSafetyHookActive,

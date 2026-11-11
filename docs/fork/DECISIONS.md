@@ -746,3 +746,11 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **測試**：新增 `tests/hooks/post-edit-typecheck.test.js`（3 項）：Windows 上放真的 `npx.cmd` 假 shim（印出 TS2322 診斷並 exit 2）驗證診斷被轉出；PATH 中沒有 npx 時必須報 not run／without diagnostics（任何平台）；stdin 仍原樣傳回。修前前兩項紅（stderr 空白），修後綠。未啟動真的 tsc、未下載套件。
 
 **上游**：`upstream/main` 仍為 `d2ef2680`，未修；本機最小修正。
+
+## 2026-11-12：F1 補強——fail-closed 不得吞掉使用者的明示停用（推送前審查）
+
+**問題**：bb514f87 的 fail-closed 有兩個洞，讓 BLOCKED 訊息建議的逃生口（`ECC_DISABLED_HOOKS`）失效。(1) `pre-bash-dispatcher.js` 頂層 `require('./bash-hook-dispatcher')` 早於 `isHookEnabled('pre:bash:dispatcher')`，任一子 hook 模組載入失敗（審查以 `auto-tmux-dev.js` 加語法錯誤實測）就 exit 1，bootstrap 把它判為安全入口而轉成 exit 2，即使使用者已停用 dispatcher 與全部安全子 hook。(2) 同檔 `truncated` 分支無條件 exit 2。
+
+**修法**：`scripts/hooks/safety-hooks.js` 集中 pre-Bash 安全子 hook 的 id／profile 清單（`PRE_BASH_SAFETY_HOOKS`，測試釘住 `bash-hook-dispatcher.js` 的宣告與它一致）並新增 `hasActivePreBashSafetyHook()`。`pre-bash-dispatcher.js` 改為：先看 dispatcher 是否停用，`truncated` 時只在仍有啟用的安全子 hook 才擋，`bash-hook-dispatcher` 延遲到這些檢查之後才 `require`，載入失敗時有啟用的安全子 hook 才 exit 2，否則 exit 0 並說明原因；最外層 catch 同理。`isSafetyEntrypoint`（bootstrap 判斷用）也改為「該 hook 目前仍啟用」才算安全入口：dispatcher 要啟用且有啟用的安全子 hook；`run-with-flags` 入口要該 hook 的 profile／`ECC_DISABLED_HOOKS`／`ECC_GATEGUARD` 都沒關掉。所以使用者停用後，崩潰或載入失敗不再被 bootstrap 轉成阻擋。
+
+**測試**：新增 `tests/hooks/safety-hooks-optout.test.js`（9 項，修前 4 項紅）：用複製出來的 plugin root 讓 `auto-tmux-dev.js` 帶語法錯誤；啟用時 exit 2、停用 dispatcher／停用全部安全子 hook／`ECC_GATEGUARD=off` 加停用 block-no-verify 時 exit 0、只停用其中之一仍 exit 2；超大請求同樣只在有啟用的安全子 hook 時才擋；`run-with-flags` 入口崩潰在 hook 停用後不再 exit 2。

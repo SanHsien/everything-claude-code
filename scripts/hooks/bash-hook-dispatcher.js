@@ -8,7 +8,7 @@ const {
   combineAdditionalContext,
 } = require('./pretooluse-visible-output');
 
-const { isSafetyHookActive, payloadProblem, safetyBlock } = require('./safety-hooks');
+const { hasActivePreBashSafetyHook, isSafetyHookActive, payloadProblem, safetyBlock } = require('./safety-hooks');
 
 const { run: runBlockNoVerify } = require('./block-no-verify');
 const { run: runAutoTmuxDev } = require('./auto-tmux-dev');
@@ -177,9 +177,9 @@ function runHooks(rawInput, hooks) {
 function runPreBash(rawInput) {
   // An enabled security sub-hook cannot inspect a request it cannot parse, so
   // the whole pre-Bash chain blocks instead of each hook's parse-error allow.
-  const guard = PRE_BASH_HOOKS.find(
-    hook => hook.safety && isHookEnabled(hook.id, { profiles: hook.profiles }) && isSafetyHookActive(hook.id)
-  );
+  const guard = hasActivePreBashSafetyHook()
+    ? PRE_BASH_HOOKS.find(hook => hook.safety && isHookEnabled(hook.id, { profiles: hook.profiles }) && isSafetyHookActive(hook.id))
+    : null;
   if (guard) {
     const problem = payloadProblem(rawInput);
     if (problem) {
