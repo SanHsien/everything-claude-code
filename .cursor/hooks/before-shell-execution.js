@@ -14,8 +14,15 @@ function hasBlockingGuard() {
     );
 }
 
+// Only block-no-verify is a security control. The dev-server guard is a
+// workflow nudge (it also exits 2 to refuse a command, but a failure of the
+// guard itself must not stop unrelated shell commands), so it stays fail-open.
+function hasSecurityGuard() {
+  return hookEnabled('pre:bash:block-no-verify', ['minimal', 'standard', 'strict']);
+}
+
 // Cursor denies on exit code 2 and continues on anything else, so a failure of
-// an enabled blocking guard has to turn into exit 2 here.
+// an enabled security guard has to turn into exit 2 here.
 function failClosed(reason) {
   console.error(`[Cursor Hook] BLOCKED: beforeShellExecution guard failed (${reason}). Failing closed.`);
   process.exit(2);
@@ -48,7 +55,7 @@ readStdin({ includeMetadata: true })
       } catch (error) {
         // The guards cannot inspect a request they cannot parse (the Claude Code
         // path blocks on this too); with no guard enabled it is only logged.
-        if (hasBlockingGuard()) failClosed(`stdin is unusable: ${error.message}`);
+        if (hasSecurityGuard()) failClosed(`stdin is unusable: ${error.message}`);
         input = {};
         cmd = String(raw || '');
       }
@@ -64,7 +71,7 @@ readStdin({ includeMetadata: true })
       }
 
       if (hookEnabled('pre:bash:dev-server-block', ['standard', 'strict']) && process.platform !== 'win32') {
-        runExistingHook('pre-bash-dev-server-block.js', claudeRaw, { failClosed: true });
+        runExistingHook('pre-bash-dev-server-block.js', claudeRaw);
       }
 
       if (
@@ -80,12 +87,12 @@ readStdin({ includeMetadata: true })
         console.error('[ECC] Review changes before push: git diff origin/main...HEAD');
       }
     } catch (error) {
-      if (hasBlockingGuard()) failClosed(error.message);
+      if (hasSecurityGuard()) failClosed(error.message);
     }
 
     process.stdout.write(raw);
   })
   .catch(error => {
-    if (hasBlockingGuard()) failClosed(error && error.message);
+    if (hasSecurityGuard()) failClosed(error && error.message);
     process.exit(0);
   });

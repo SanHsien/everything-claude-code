@@ -818,6 +818,7 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 對 20 份 diff 的新增行掃描 `curl … | sh`、`iwr`、`iex`、`Invoke-Expression`、`dangerously`、`bypassPermissions`、`ignore previous`、`system prompt`、HTML 註解、`base64 -d`、`eval(`、零寬與雙向控制字元：**0 筆命中**。
 
 ### 四、issue 軸（3 筆）
+
 | issue | 判定 | 理由 |
 |---|---|---|
 | #3903 | 不處理 | 標題只有「GateGuard f」，內文為空，無法判斷內容；若之後補完且描述 GateGuard 行為缺陷，再對照本 fork 的 GateGuard 測試。 |
@@ -855,3 +856,11 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **D. stdin 空或無法解析**：`before-shell-execution.js` 原本把空輸入當 `{}`、非 JSON 當成指令字串繼續跑，Claude Code 路徑則對無法檢查的請求 exit 2。現在 JSON 解析失敗、空輸入、或解析結果不是物件（`null`、陣列）時，只要仍有啟用的 blocking guard 就 exit 2（BLOCKED 訊息說明原因），guard 都被使用者停用時照舊放行。`tests/hooks/cursor-block-no-verify.test.js` 原有兩項把「空輸入／非 JSON 放行」釘成規格，改為預期 exit 2（非 JSON 內含 `--no-verify` 的案例本來就是 2）。
 
 **測試**：`tests/hooks/cursor-fail-closed.test.js` 增至 21 項，修前 12 項紅：逾時覆寫 1、999、0、-5、abc、1.5、60001、99999999999 皆警告並用預設、健康 guard 不被擋；邊界 1000、60000 接受且無警告；空、非 JSON、`null`、陣列 stdin 皆 exit 2；guard 停用後不擋。
+
+## 2026-11-12：CI 修補——dev-server guard 不是安全控制；Pi 測試骨架補上 `safety-hooks.js`；MD058
+
+main CI（run 43077452803，commit 989a6bfa）紅了三處，原因都在本輪自己的改動：
+
+1. **`tests/hooks/cursor-fail-closed.test.js`（macOS／Linux 才紅，本機 Windows 綠）**：`before-shell-execution.js` 在非 Windows 會再跑 `pre-bash-dev-server-block.js`，測試的暫存安裝沒放這支，而 989a6bfa／edebe4a3 又把它標成 `failClosed`，所以「找不到檔」就 exit 2，所有案例（包含逾時覆寫與健康 guard）都被擋。(a) 是 fixture 漏複製，不是安裝清單的產品問題（安裝模組以整個 `scripts/hooks` 目錄為單位，真實安裝帶得到）。(b) dev-server guard 是工作流程提醒（要求在 tmux 啟 dev server），不是安全控制：它自己失敗時不該擋下無關的 shell 指令。修法：只有 `block-no-verify` 維持 fail-closed；dev-server guard 不再傳 `failClosed`，`stdin 不可用` 與兩個 catch 改用 `hasSecurityGuard()`（只看 block-no-verify 是否啟用），原有的 `hasBlockingGuard()`（含 dev-server，截斷輸入時用）不動。測試 fixture 補上健康的 dev-server stub，並用 `NODE_OPTIONS` 預載把 `process.platform` 設為 `linux`，讓 Windows 本機也走 CI 的 POSIX 派送路徑；新增 3 項（dev-server guard 缺失、崩潰、只剩它啟用時 stdin 不可用都不擋）。對 HEAD 版 `before-shell-execution.js` 跑：24 項中 21 過 3 敗；修後 24 / 0。
+2. **`tests/pi/pi-extension-adapter.test.js`（3 項）**：Pi 測試手動列出 `run-with-flags.js` 執行時要 `require` 的檔案來建最小骨架，沒列新增的 `scripts/hooks/safety-hooks.js`，出現 `Cannot find module './safety-hooks'`。清單補上 `safety-hooks.js`（產品安裝不受影響，同上）。
+3. **markdownlint MD058**：上一條上游分流的「四、issue 軸」表格前缺空行，補上。

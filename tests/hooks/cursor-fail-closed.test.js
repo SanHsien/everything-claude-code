@@ -34,7 +34,7 @@ function check(name, fn) {
 const PAYLOAD = JSON.stringify({ command: 'echo hello', hook_event_name: 'beforeShellExecution' });
 
 // A project-style install: <root>/.cursor/hooks/*.js next to <root>/scripts/{hooks,lib}.
-function createInstall(blockNoVerifySource) {
+function createInstall(blockNoVerifySource, devServerSource = 'process.exit(0);\n') {
   const root = fs.mkdtempSync(path.join(sandbox, 'install-'));
   fs.mkdirSync(path.join(root, '.cursor', 'hooks'), { recursive: true });
   for (const file of ['adapter.js', 'before-shell-execution.js']) {
@@ -42,11 +42,20 @@ function createInstall(blockNoVerifySource) {
   }
   fs.cpSync(path.join(repoRoot, 'scripts', 'lib'), path.join(root, 'scripts', 'lib'), { recursive: true });
   fs.mkdirSync(path.join(root, 'scripts', 'hooks'), { recursive: true });
+  // Non-Windows platforms also run the dev-server guard, so a real install has it.
+  if (devServerSource !== null) {
+    fs.writeFileSync(path.join(root, 'scripts', 'hooks', 'pre-bash-dev-server-block.js'), devServerSource);
+  }
   if (blockNoVerifySource !== null) {
     fs.writeFileSync(path.join(root, 'scripts', 'hooks', 'block-no-verify.js'), blockNoVerifySource);
   }
   return root;
 }
+
+// The dev-server guard only runs off Windows. Preload a platform override so
+// every host exercises the POSIX dispatch path that macOS/Linux CI uses.
+const posixPreload = path.join(sandbox, 'force-posix.js');
+fs.writeFileSync(posixPreload, "Object.defineProperty(process, 'platform', { value: 'linux' });\n");
 
 function run(root, env = {}, input = PAYLOAD) {
   const home = path.join(sandbox, 'home');
@@ -54,6 +63,7 @@ function run(root, env = {}, input = PAYLOAD) {
   const base = {
     ...process.env, HOME: home, USERPROFILE: home, TEMP: home, TMP: home, TMPDIR: home,
     ECC_HOOK_PROFILE: 'standard',
+    NODE_OPTIONS: `--require ${JSON.stringify(posixPreload)}`,
   };
   for (const key of ['ECC_DISABLED_HOOKS', 'ECC_HOOKS_ENABLED', 'ECC_HOOK_CONFIG', 'ECC_CURSOR_HOOK_TIMEOUT_MS']) delete base[key];
   return spawnSync(process.execPath, [path.join(root, '.cursor', 'hooks', 'before-shell-execution.js')], {
@@ -94,6 +104,25 @@ check('a broken guard that the user disabled does not deny', () => {
   const r = run(createInstall('process.exit(1);\n'), {
     ECC_DISABLED_HOOKS: 'pre:bash:block-no-verify,pre:bash:dev-server-block',
   });
+  assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+});
+
+console.log('\nthe dev-server guard is not a security control');
+
+// The dev-server guard is a workflow nudge: when it cannot run (missing, crashing,
+// hanging) ordinary commands must still go through.
+check('a missing dev-server guard does not deny commands', () => {
+  const r = run(createInstall('process.exit(0);\n', null));
+  assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+});
+
+check('a crashing dev-server guard does not deny commands', () => {
+  const r = run(createInstall('process.exit(0);\n', 'process.exit(1);\n'));
+  assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+});
+
+check('unusable stdin is not denied when only the dev-server guard is enabled', () => {
+  const r = run(createInstall('process.exit(0);\n'), { ECC_DISABLED_HOOKS: 'pre:bash:block-no-verify' }, '{ not json');
   assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
 });
 

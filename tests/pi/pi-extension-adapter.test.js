@@ -110,6 +110,7 @@ function buildEccSkeleton(repoRoot) {
   for (const name of [
     "hook-input.js",
     "hook-input-limits.js",
+    "safety-hooks.js",
     "run-with-flags.js",
     "session-end-marker.js",
     "pretooluse-visible-output.js",
