@@ -103,6 +103,24 @@ function compileContextProfileWithRegistry({ repoRoot = DEFAULT_REPO_ROOT, ...op
   return { registry, plan: compileContextPlan(registry, { repoRoot, ...options }) };
 }
 
+// Compile every requested profile x target from ONE canonical registry load.
+// The registry is still produced here by the canonical loader (callers cannot
+// inject one), so source-identity verification is unchanged; it just is not
+// repeated for each of the profile x target projections. Without `targets`,
+// every target the registry declares is compiled.
+function compileContextProfileMatrix({
+  repoRoot = DEFAULT_REPO_ROOT, profileIds = ['lean@1', 'full@1'], targets, ...options
+} = {}) {
+  const registry = loadContextRegistry({ repoRoot });
+  const plans = [];
+  for (const profileId of profileIds) {
+    for (const target of targets || registry.targets) {
+      plans.push({ profileId, target, plan: compileContextPlan(registry, { repoRoot, profileId, target, ...options }) });
+    }
+  }
+  return { registry, plans };
+}
+
 function compileContextPlan(registry, {
   repoRoot = DEFAULT_REPO_ROOT, profileId = 'lean@1', selectionMode = 'manual',
   target = 'codex', include = [], exclude = [],
@@ -145,4 +163,7 @@ function compileContextPlan(registry, {
   return plan;
 }
 
-module.exports = { compileContextProfile, compileContextProfileWithRegistry, explainContextEntry, loadContextProfile };
+module.exports = {
+  compileContextProfile, compileContextProfileMatrix, compileContextProfileWithRegistry,
+  explainContextEntry, loadContextProfile,
+};

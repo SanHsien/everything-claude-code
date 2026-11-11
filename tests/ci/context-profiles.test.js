@@ -8,10 +8,16 @@ const SCRIPT = path.join(ROOT, 'scripts/ci/validate-context-profiles.js');
 
 const tests = [
   ['validates every profile against every declared target in read-only mode', () => {
+    const startedAt = Date.now();
     const result = spawnSync(process.execPath, [SCRIPT, '--json'], {
       cwd: ROOT, encoding: 'utf8', timeout: 60_000,
     });
-    assert.strictEqual(result.status, 0, result.stderr);
+    // A timeout leaves status null and stderr empty; say which one it was.
+    assert.strictEqual(
+      result.status, 0,
+      `${result.stderr} [status=${result.status} signal=${result.signal} `
+      + `error=${result.error && result.error.code} elapsedMs=${Date.now() - startedAt}]`
+    );
     const output = JSON.parse(result.stdout);
     assert.strictEqual(output.status, 'success');
     assert.strictEqual(output.profileCount, 2);

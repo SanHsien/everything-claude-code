@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 'use strict';
 
-const { loadContextRegistry, loadSkillTriggers } = require('../lib/context-pack-registry');
-const { compileContextProfile } = require('../lib/context-profiles');
+const { loadSkillTriggers } = require('../lib/context-pack-registry');
+const { compileContextProfileMatrix } = require('../lib/context-profiles');
 const { digestObject } = require('../lib/context-profile-support');
 
+const PROFILE_IDS = ['lean@1', 'full@1'];
+
 function validate(repoRoot) {
-  const registry = loadContextRegistry({ repoRoot });
+  // One canonical registry load serves the trigger checks and all projections.
+  const { registry } = compileContextProfileMatrix({ repoRoot, profileIds: PROFILE_IDS });
   const { triggers, manifest } = loadSkillTriggers({ repoRoot });
   const known = new Set(registry.entries.map(entry => entry.id));
   const unknown = Object.keys(triggers).filter(id => !known.has(id));
@@ -22,12 +25,7 @@ function validate(repoRoot) {
       if (phrase.length > 80) throw new Error(`Skill trigger exceeds 80 characters: ${phrase.slice(0, 40)}`);
     }
   }
-  const profiles = ['lean@1', 'full@1'];
-  for (const profileId of profiles) {
-    for (const target of registry.targets) {
-      compileContextProfile({ repoRoot, profileId, target });
-    }
-  }
+  const profiles = PROFILE_IDS;
   return {
     status: 'success', skillCount: registry.entries.length,
     profileCount: profiles.length, targetCount: registry.targets.length,

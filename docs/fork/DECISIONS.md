@@ -726,3 +726,13 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **測試**：新增 `tests/hooks/format-windows-paths.test.js`（6 項）：建構器單元測試（參數不進命令列、舊 token 清除、危險字元拒絕）加 Windows 上以真的 `.cmd` shim（放在含空白與括號的目錄、目標檔名含 `& % ! ( )`）驗證 `post-edit-format` 與 `stop-format-typecheck` 都把路徑當一個參數交給 shim；修前兩項 e2e 紅（shim 從未執行／Stop 略過整批）、修後全綠。`tests/hooks/hooks.test.js` 兩項原本釘住舊實作（原始碼含 `UNSAFE_PATH_CHARS`、`;` 反引號 `$()` 括號路徑須在 spawn 前被擋），改成釘住性質：不用 `shell: true`、路徑作為單一環境 token 傳遞、含 `"` 的路徑才被拒絕。`hooks` 260 項、`stop-format-typecheck` 33 項、`quality-gate` 24 項全綠。
 
 **上游**：`upstream/main` 仍為 `d2ef2680`，兩支 hook 未修；本機最小修正，上游改寫時以上游版為準。
+
+## 2026-11-12：context validator 只載入一次 registry（覆核 F6，完成 ROADMAP 中期列）
+
+**根因**：`scripts/ci/validate-context-profiles.js` 先 `loadContextRegistry`，又對 2 個 profile × 17 個 target 各呼叫一次 `compileContextProfile`，後者每次重新載入 registry（逐檔 `open` ＋ `lstat` 祖先鏈重驗，約 314 個 skill 來源）。35 次完整載入在逐檔 I/O 成本高的 Windows 主機上超過 `tests/ci/context-profiles.test.js` 的 60 秒上限（覆核 60.3 秒逾時；本機修前實測同一驗證器 96.7 秒，同時另有安裝測試在跑）。
+
+**修法**：`scripts/lib/context-profiles.js` 新增並匯出 `compileContextProfileMatrix`：registry 仍由模組內的正規載入器產生（呼叫端不能注入，維持原註解的界線），載入一次後對每個 profile × target 呼叫 `compileContextPlan`，回傳 `{ registry, plans }`。`validate()` 改用它，並以同一份 registry 做 trigger 檢查。來源身分重驗（`context-profile-support.js` 的 `lstat` 祖先鏈與開啟前後驗證）一行未動，只是不再重複 35 次。副作用：registry／profile 編譯錯誤會早於 trigger 檢查錯誤出現（兩者同時錯時訊息順序不同）。
+
+**測試與量測**：新增 `tests/ci/context-profiles-registry-reuse.test.js`（3 項）：`validate()` 只載入 registry 1 次（修前 35 次，紅）、共享 registry 的 plan digest 與獨立編譯同一組完全相同、未知 target／profile 仍拋錯；另在 `tests/ci/context-profiles.test.js` 斷言訊息加上 `status／signal／error.code／elapsedMs`，逾時不再只剩 `null !== 0`（60 秒上限沒有放寬）。同機同負載前後：`validate-context-profiles.js` 修前 96.7 秒（35 次載入）→ 修後 1.7 秒（1 次載入）；34 個投影結果、`planDigest` 不變。`context` 相關 84 項測試全綠。報告另建議的「外層 runner deadline 大於內層預算」未做（沒有可獨立量測的失敗證據）。
+
+**上游**：`upstream/main` 仍為 `d2ef2680`，同檔未修；本機最小修正。
