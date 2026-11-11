@@ -835,3 +835,11 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 
 ### 六、水位
 commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewed_pr_through` 推進至 **3923**；issue `reviewed_issue_through` 推進至 **3922**；`reviewed_date` 為 **2026-11-12**。未移植任何產品碼。
+
+## 2026-11-12：上游 PR #3925、issue #3924 補審（同日稍晚新增）
+
+`check_upstream_updates.py --strict` 在上一條目提交後再跑，上游又新增 PR #3925 與 issue #3924（commit 軸仍是 `d2ef2680`，behind 0）。
+- [#3925](https://github.com/affaan-m/ECC/pull/3925) OPEN，head `d55d6f9e07c7c751a59961d57233f347beb83820`，7 檔 +51/-13（`manifests/context-packs/skill-triggers@1.json`、`skills/ck/commands/{init,resume,save,shared}.mjs`、`skills/ck/hooks/session-start.mjs`、`tests/skills/ck-paths.test.js`）：`ck` 技能在 Windows 上同一資料夾以 `C:/...` 與 `C:\...` 兩種寫法被登記兩次的修正。已讀 diff，對新增行掃描 `curl … | sh`、`iwr`、`Invoke-Expression`、`dangerously`、`bypassPermissions`、`ignore previous`、`system prompt`、HTML 註解、`base64 -d`、`eval(`：0 筆命中。**不採用（等合併）**：本 fork 不用 `ck`（同 #3922／#3923 的判斷）；重看：上游合併。
+- [#3924](https://github.com/affaan-m/ECC/issues/3924) OPEN：同一個 `ck` 路徑問題的回報，對應 #3925，同樣不處理。
+
+水位：`reviewed_pr_through` 推進至 **3925**、`reviewed_issue_through` 推進至 **3924**；`reviewed_date` 仍為 2026-11-12；未移植任何產品碼；未新增 monitored。
