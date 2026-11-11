@@ -531,7 +531,27 @@ function retainDriftedCopy(operation, trustedRoot) {
   return null;
 }
 
-function uninstallCursorHooks(operation, trustedRoot, managedOperations) {
+// A source that does not parse is ignored; the ledger records still apply.
+function collectEccCommandsSafely(sourceText, managedOperations) {
+  try {
+    return collectEccCommands(sourceText, managedOperations);
+  } catch (_error) {
+    return collectEccCommands(null, managedOperations);
+  }
+}
+
+// ECC's own hooks.json from the repository, when it can be read: lets uninstall
+// recognise ECC entries even if the ledger lost the .cursor/hooks/ records.
+function readCursorHooksSource(repoRoot, operation) {
+  try {
+    const sourcePath = resolveOperationSourcePath(repoRoot, operation);
+    return sourcePath ? fs.readFileSync(sourcePath, 'utf8') : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function uninstallCursorHooks(operation, trustedRoot, managedOperations, repoRoot) {
   const existingDestination = getContainedExistingPath(
     operation.destinationPath,
     trustedRoot,
@@ -543,7 +563,7 @@ function uninstallCursorHooks(operation, trustedRoot, managedOperations) {
   try {
     stripped = stripEccHooksConfig(
       readFileNoFollow(getManagedDestination(existingDestination, trustedRoot, 'uninstall').managedPath, 'utf8'),
-      collectEccCommands(null, managedOperations)
+      collectEccCommandsSafely(readCursorHooksSource(repoRoot, operation), managedOperations)
     );
   } catch (_error) {
     // Not a hooks config ECC can interpret: leave the user's file alone.
@@ -557,7 +577,7 @@ function uninstallCursorHooks(operation, trustedRoot, managedOperations) {
 
 function uninstallCopyFile(operation, trustedRoot, options) {
   if (isCursorHooksOperation(operation)) {
-    return uninstallCursorHooks(operation, trustedRoot, options.managedOperations || []);
+    return uninstallCursorHooks(operation, trustedRoot, options.managedOperations || [], options.repoRoot);
   }
   if (options.preserveDriftedCopies) {
     const retained = retainDriftedCopy(operation, trustedRoot);
@@ -2034,6 +2054,7 @@ function uninstallInstalledStates(options = {}) {
         const outcome = executeUninstallOperation(operation, record.targetRoot, {
           preserveDriftedCopies: true,
           managedOperations: operations,
+          repoRoot: options.repoRoot ? path.resolve(options.repoRoot) : DEFAULT_REPO_ROOT,
           target: record.adapter.target,
           settingsLockHeld: Boolean(releaseSettingsLock),
         });

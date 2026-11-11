@@ -215,6 +215,29 @@ test('an entry written by an older ECC version (script recorded in the ledger) i
   assert.deepEqual(fixture.read().hooks.sessionStart, [ECC_START]);
 });
 
+test('uninstall still removes ECC entries when the ledger lost the hooks directory records', t => {
+  const fixture = createFixture(t);
+  fixture.install();
+  const userEntry = { command: 'node .cursor/hooks/my-own-script.js', event: 'stop' };
+  const config = withUserHooks(fixture.read());
+  config.hooks.stop = [userEntry];
+  fixture.write(config);
+  // Simulate a damaged ledger: only the hooks.json record survives.
+  const statePath = path.join(path.dirname(fixture.hooksPath), 'ecc-install-state.json');
+  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  state.operations = state.operations.filter(operation => (
+    path.basename(operation.destinationPath) === 'hooks.json'
+  ));
+  assert.equal(state.operations.length, 1);
+  fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  repairResult(fixture.uninstall());
+  assert.deepEqual(fixture.read(), {
+    version: 1,
+    userKey: 'keep',
+    hooks: { beforeShellExecution: [USER_SHELL], stop: [userEntry] },
+  });
+});
+
 function repairResult(report) {
   assert.equal(report.results.length, 1);
   return report.results[0];

@@ -843,3 +843,7 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 - [#3924](https://github.com/affaan-m/ECC/issues/3924) OPEN：同一個 `ck` 路徑問題的回報，對應 #3925，同樣不處理。
 
 水位：`reviewed_pr_through` 推進至 **3925**、`reviewed_issue_through` 推進至 **3924**；`reviewed_date` 仍為 2026-11-12；未移植任何產品碼；未新增 monitored。
+
+## 2026-11-12：uninstall 在 ledger 缺 hooks 目錄記錄時仍能移除 ECC 的 Cursor hook 條目（複審 B）
+
+9059e159 讓 uninstall 只靠 ledger 裡 `.cursor/hooks/` 下的 ECC 檔案辨認 ECC 條目；ledger 殘缺（只剩 `hooks.json` 那筆）時什麼都辨認不出，ECC 條目會留在使用者檔案裡。現在 `uninstallInstalledStates` 把 `repoRoot`（`options.repoRoot`，預設為本 repo）帶進 `uninstallCursorHooks`，讀倉庫內的 `.cursor/hooks.json` 當來源，與 ledger 取聯集；來源讀不到或無法解析時退回只用 ledger。使用者條目照舊保留。`tests/lib/install-cursor-hooks-merge.test.js` 增至 11 項（新增：刪掉 ledger 中 hooks 目錄記錄後 uninstall，ECC 條目移除、使用者的 `node .cursor/hooks/my-own-script.js` 保留；修前紅）。
