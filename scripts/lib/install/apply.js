@@ -60,6 +60,13 @@ const {
 const { buildInstallIndex, rewriteRelativeLinks } = require('./link-rewrite');
 const { transformInstallContent } = require('./content-transform');
 const { assertScriptBoundary, isScriptBoundary } = require('./opencode-script-boundary');
+const {
+  assertNoNewUserOwnedMcpServer,
+  comparablePath: comparableMcpPath,
+  isMcpServerMerge,
+  mergeMcpConfig,
+  withPreservedUserMcpServers,
+} = require('./mcp-user-servers');
 
 function isMarkdownPath(filePath) {
   return /\.(md|mdx|markdown)$/i.test(String(filePath || ''));
@@ -742,7 +749,9 @@ function preflightQwenAgentOperations(plan) {
 }
 
 function previewInstallPlan(rawPlan) {
-  const plan = withMcpMergeExclusions(rawPlan, parseDisabledMcpServers(process.env.ECC_DISABLED_MCPS));
+  const plan = withPreservedUserMcpServers(
+    withMcpMergeExclusions(rawPlan, parseDisabledMcpServers(process.env.ECC_DISABLED_MCPS))
+  );
   preflightQwenAgentOperations(plan);
   assertOpenCodeScriptBoundary(plan);
   assertOpenCodeHookDeactivationReady(plan);
@@ -807,7 +816,7 @@ function applyInstallPlan(plan, dependencies = {}) {
 
 function applyInstallPlanLocked(rawPlan, dependencies = {}, settingsLockHeld = false) {
   const disabledServers = parseDisabledMcpServers(process.env.ECC_DISABLED_MCPS);
-  const plan = withMcpMergeExclusions(rawPlan, disabledServers);
+  const plan = withPreservedUserMcpServers(withMcpMergeExclusions(rawPlan, disabledServers));
   preflightQwenAgentOperations(plan);
   const persistInstallState = dependencies.writeInstallState || writeInstallState;
   const beforeInstallStateRead = dependencies.beforeInstallStateRead;
@@ -920,7 +929,18 @@ function applyInstallPlanLocked(rawPlan, dependencies = {}, settingsLockHeld = f
           operation.destinationPath,
           'existing JSON config'
         );
-        const mergedValue = deepMergeJson(currentValue, payload);
+        let mergedValue;
+        if (isMcpServerMerge(operation)) {
+          // Only servers ECC manages may change; a user entry that appeared
+          // after planning aborts instead of being overwritten.
+          assertNoNewUserOwnedMcpServer(
+            operation,
+            migration.previousManagedOperations.get(comparableMcpPath(operation.destinationPath))
+          );
+          mergedValue = mergeMcpConfig(currentValue, payload, deepMergeJson);
+        } else {
+          mergedValue = deepMergeJson(currentValue, payload);
+        }
         fs.writeFileSync(operation.destinationPath, formatJson(mergedValue), 'utf8');
         writtenDestinations.add(operation.destinationPath);
         continue;

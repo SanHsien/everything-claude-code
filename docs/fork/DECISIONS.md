@@ -689,3 +689,15 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 **測試**：新增 `tests/hooks/safety-hooks-fail-closed.test.js`（17 項，涵蓋非字串 `tool_name`、半截 JSON、非物件 JSON、config-protection 無效 JSON、缺腳本、`run()` 拋例外、舊式子程序逾時、dispatcher 例外、bootstrap exit 1／0／2、逾時與 signal 的判定函式，以及非安全 hook 與已明示停用者維持放行）。修前 11 項紅、修後全綠。`tests/hooks/gateguard-fact-force.test.js` 的「malformed JSON passes through unchanged」原本把 fail-open 當規格釘住，改為「exit 2、stderr 含 BLOCKED、stdout 空」。
 
 **範圍界線**：只處理 Claude Code PreToolUse 路徑。`.cursor/hooks/before-shell-execution.js` 等其他宿主的 hook 協定不同，未動。**上游**：2026-11-12 `git fetch upstream` 的 `upstream/main` 仍為 `d2ef2680`（本 fork 水位），上游尚未修；這是對上游持有檔（上述三支加兩個測試）的本機最小修正，上游修了或改寫這些檔時以上游版為準並保留 `safety-hooks.js` 的測試意圖。
+
+## 2026-11-12：安裝 MCP 設定時不覆寫使用者的同名 server（覆核 F2）
+
+**根因**：Cursor（及 kimi）的 `.mcp.json` 以 `merge-json` 操作寫入 `mcp.json`，`apply.js` 對它做整份 `deepMergeJson`，同名 `mcpServers.<name>` 直接被 ECC 的定義覆蓋。使用者的 `chrome-devtools` 若用自己的 `command`／`args`（覆核探針：`custom-local-command` 變成 `npx -y chrome-devtools-mcp@1.10.1`），重裝就被換掉，且 ledger 把它記成 ECC 管理，之後 repair 還會再蓋回去。`copy-file` 才有的「使用者檔案保護」不適用於 `merge-json`。
+
+**修法**：新增 fork 自有模組 `scripts/lib/install/mcp-user-servers.js`，在 `apply.js` 的 `previewInstallPlan` 與 `applyInstallPlanLocked` 於 `withMcpMergeExclusions` 之後接 `withPreservedUserMcpServers`（plan 層調整，operations、`statePreview` 與 ledger 一致）。逐 server 名稱判定：不存在就加；與 ECC 定義相同就略過；與「前次 install-state 記錄的 ECC 定義」相同（使用者沒動過）就視為仍由 ECC 管理並更新；其餘一律是使用者自己的，保留原值、從 payload 與 ledger 移除（repair／uninstall 不會碰）並產生警告（含 server 名與檔案路徑，preview 與 apply 的 `warnings` 都有）。全部 server 都衝突且無其他鍵時整個 operation 不進 ledger。寫入時（`merge-json` 分支）改用 `mergeMcpConfig`：ECC 管理的 server 整筆取代，避免新 command 搭舊 env 的混合狀態；並重驗規劃後才出現的使用者同名 server，出現就中止（同 `assertNoNewUserOwnedFile` 的語意）。
+
+**測試**：新增 `tests/lib/install-mcp-user-servers.test.js`（7 項：保留 command／args／env 並警告、preview 不寫入、repair／uninstall 不碰、全新安裝與相同定義無警告、未改動的 ECC 條目可更新、使用者改過的條目被保留、全衝突時不認領）。修前 5 項紅、修後 7 項全綠；`install` 相關 36 個測試檔 693 項通過（見下方本機失敗說明）。
+
+**本機失敗紀錄（未修，依裁決只記錄）**：`ECC_TEST_JOBS=4` 平行跑 install 相關測試時，`lib/install-state.test.js` 的「concurrent writeInstallState calls always leave a complete valid state」在本機 Windows 重現 `EPERM: rename ... .ecc-install-state.json.<pid>.<id>.tmp -> ecc-install-state.json`（`scripts/lib/atomic-write.js:89`），單檔重跑 10 項全過；`lib/install-executor.test.js` 同輪因 `.opencode/dist/index.js` 不存在（`ENOENT copyfile`，該檔需先建置）失敗，單檔重跑 26 項全過。兩者與本次變更無關，也沒有捕獲鎖持有者或防毒狀態，維持 2026-11-03 條目的判斷：不放寬斷言、不修產品碼，計入勝負的是 fork CI。
+
+**上游**：`upstream/main` 仍為 `d2ef2680`，同檔未修；這是對上游持有檔 `scripts/lib/install/apply.js` 的最小接線修正，其餘邏輯在 fork 自有的新檔。上游修了或改寫此段時以上游版為準。
