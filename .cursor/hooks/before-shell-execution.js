@@ -40,9 +40,15 @@ readStdin({ includeMetadata: true })
       let input;
       let cmd;
       try {
-        input = JSON.parse(raw || '{}');
+        input = JSON.parse(raw);
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+          throw new TypeError('hook input is not a JSON object');
+        }
         cmd = String(input.command || input.args?.command || '');
-      } catch {
+      } catch (error) {
+        // The guards cannot inspect a request they cannot parse (the Claude Code
+        // path blocks on this too); with no guard enabled it is only logged.
+        if (hasBlockingGuard()) failClosed(`stdin is unusable: ${error.message}`);
         input = {};
         cmd = String(raw || '');
       }

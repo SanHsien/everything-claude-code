@@ -48,7 +48,7 @@ function createInstall(blockNoVerifySource) {
   return root;
 }
 
-function run(root, env = {}) {
+function run(root, env = {}, input = PAYLOAD) {
   const home = path.join(sandbox, 'home');
   fs.mkdirSync(home, { recursive: true });
   const base = {
@@ -57,7 +57,7 @@ function run(root, env = {}) {
   };
   for (const key of ['ECC_DISABLED_HOOKS', 'ECC_HOOKS_ENABLED', 'ECC_HOOK_CONFIG', 'ECC_CURSOR_HOOK_TIMEOUT_MS']) delete base[key];
   return spawnSync(process.execPath, [path.join(root, '.cursor', 'hooks', 'before-shell-execution.js')], {
-    input: PAYLOAD, encoding: 'utf8', timeout: 60000, cwd: root, env: { ...base, ...env },
+    input, encoding: 'utf8', timeout: 60000, cwd: root, env: { ...base, ...env },
   });
 }
 
@@ -94,6 +94,44 @@ check('a broken guard that the user disabled does not deny', () => {
   const r = run(createInstall('process.exit(1);\n'), {
     ECC_DISABLED_HOOKS: 'pre:bash:block-no-verify,pre:bash:dev-server-block',
   });
+  assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+});
+
+console.log('\nECC_CURSOR_HOOK_TIMEOUT_MS is bounded');
+
+// A healthy guard must keep working whatever the override says; a too-small
+// value would otherwise time every command out and (fail-closed) block it.
+for (const [label, value] of [['1 (below the minimum)', '1'], ['999 (below the minimum)', '999'], ['0', '0'], ['-5', '-5'], ['abc', 'abc'], ['1.5', '1.5'], ['60001 (above the maximum)', '60001'], ['99999999999', '99999999999']]) {
+  check(`override ${label} falls back to the default with a warning and does not block a healthy guard`, () => {
+    const r = run(createInstall('process.exit(0);\n'), { ECC_CURSOR_HOOK_TIMEOUT_MS: value });
+    assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+    assert.match(r.stderr, /ECC_CURSOR_HOOK_TIMEOUT_MS/);
+    assert.match(r.stderr, /15000/);
+  });
+}
+
+for (const value of ['1000', '60000']) {
+  check(`override ${value} (the bounds themselves) is accepted without a warning`, () => {
+    const r = run(createInstall('process.exit(0);\n'), { ECC_CURSOR_HOOK_TIMEOUT_MS: value });
+    assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /ECC_CURSOR_HOOK_TIMEOUT_MS/);
+  });
+}
+
+console.log('\nunusable stdin fails closed while a guard is enabled');
+
+for (const [label, input] of [['empty', ''], ['not JSON', '{ not json'], ['JSON null', 'null'], ['a JSON array', '[]']]) {
+  check(`${label} stdin denies the command`, () => {
+    const r = run(createInstall('process.exit(0);\n'), {}, input);
+    assert.strictEqual(r.status, 2, `status ${r.status}; stderr: ${r.stderr}`);
+    assert.match(r.stderr, /BLOCKED/);
+  });
+}
+
+check('unusable stdin is not denied once the guards are disabled', () => {
+  const r = run(createInstall('process.exit(0);\n'), {
+    ECC_DISABLED_HOOKS: 'pre:bash:block-no-verify,pre:bash:dev-server-block',
+  }, '{ not json');
   assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
 });
 

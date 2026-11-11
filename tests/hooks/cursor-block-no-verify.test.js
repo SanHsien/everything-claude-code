@@ -125,14 +125,18 @@ if (test('allows non-git commands', () => {
   assert.strictEqual(r.code, 0, `expected 0, got ${r.code}: ${r.stderr}`);
 })) passed++; else failed++;
 
-if (test('handles empty stdin gracefully', () => {
+// Fork: the guard cannot inspect a request it cannot parse, so unusable stdin
+// is denied (exit 2) while the guard is enabled, like the Claude Code path.
+if (test('denies empty stdin while the guard is enabled (fail closed)', () => {
   const r = runWrapper('');
-  assert.strictEqual(r.code, 0, `expected 0, got ${r.code}: ${r.stderr}`);
+  assert.strictEqual(r.code, 2, `expected 2, got ${r.code}: ${r.stderr}`);
+  assert.ok(r.stderr.includes('BLOCKED'), `stderr should contain BLOCKED: ${r.stderr}`);
 })) passed++; else failed++;
 
-if (test('handles malformed JSON gracefully (treats raw as command string)', () => {
+if (test('denies non-JSON stdin while the guard is enabled (fail closed)', () => {
   const r = runWrapper('git commit -m "hello"');
-  assert.strictEqual(r.code, 0, `expected 0, got ${r.code}: ${r.stderr}`);
+  assert.strictEqual(r.code, 2, `expected 2, got ${r.code}: ${r.stderr}`);
+  assert.ok(r.stderr.includes('BLOCKED'), `stderr should contain BLOCKED: ${r.stderr}`);
 })) passed++; else failed++;
 
 if (test('blocks a bypass attempt supplied as a raw command string', () => {

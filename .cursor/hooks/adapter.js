@@ -174,11 +174,33 @@ function createStopFormatTypecheckOptions(sessionEnv = {}) {
 }
 
 // ECC_CURSOR_HOOK_TIMEOUT_MS lets a slow machine (or a test) change the default
-// 15 s budget of a delegated hook; an explicit options.timeout still wins.
+// 15 s budget of a delegated hook; an explicit options.timeout still wins. The
+// value is bounded: too small and every healthy guard would time out (and, being
+// fail-closed, block every shell command); too large and a hung guard would
+// stall the editor. Anything unusable falls back to the default with a warning.
+const DEFAULT_HOOK_TIMEOUT_MS = 15000;
+const MIN_HOOK_TIMEOUT_MS = 1000;
+const MAX_HOOK_TIMEOUT_MS = 60000;
+let warnedAboutTimeoutOverride = false;
+
 function resolveHookTimeout(options) {
   if (options.timeout) return options.timeout;
-  const fromEnv = Number(process.env.ECC_CURSOR_HOOK_TIMEOUT_MS);
-  return Number.isSafeInteger(fromEnv) && fromEnv > 0 ? fromEnv : 15000;
+  const raw = process.env.ECC_CURSOR_HOOK_TIMEOUT_MS;
+  if (raw === undefined || String(raw).trim() === '') return DEFAULT_HOOK_TIMEOUT_MS;
+  const text = String(raw).trim();
+  const parsed = /^\d+$/.test(text) ? Number(text) : NaN;
+  if (Number.isSafeInteger(parsed) && parsed >= MIN_HOOK_TIMEOUT_MS && parsed <= MAX_HOOK_TIMEOUT_MS) {
+    return parsed;
+  }
+  if (!warnedAboutTimeoutOverride) {
+    warnedAboutTimeoutOverride = true;
+    process.stderr.write(
+      `[Cursor Hook] ignoring ECC_CURSOR_HOOK_TIMEOUT_MS=${JSON.stringify(text)}: `
+      + `expected an integer from ${MIN_HOOK_TIMEOUT_MS} to ${MAX_HOOK_TIMEOUT_MS}; using ${DEFAULT_HOOK_TIMEOUT_MS}
+`
+    );
+  }
+  return DEFAULT_HOOK_TIMEOUT_MS;
 }
 
 // `options.failClosed`: this hook is a security guard. Cursor denies a command

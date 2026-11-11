@@ -847,3 +847,11 @@ commit 水位維持 **`d2ef2680594f9a17526a6e1a2e18b3d242c5d17b`**；PR `reviewe
 ## 2026-11-12：uninstall 在 ledger 缺 hooks 目錄記錄時仍能移除 ECC 的 Cursor hook 條目（複審 B）
 
 9059e159 讓 uninstall 只靠 ledger 裡 `.cursor/hooks/` 下的 ECC 檔案辨認 ECC 條目；ledger 殘缺（只剩 `hooks.json` 那筆）時什麼都辨認不出，ECC 條目會留在使用者檔案裡。現在 `uninstallInstalledStates` 把 `repoRoot`（`options.repoRoot`，預設為本 repo）帶進 `uninstallCursorHooks`，讀倉庫內的 `.cursor/hooks.json` 當來源，與 ledger 取聯集；來源讀不到或無法解析時退回只用 ledger。使用者條目照舊保留。`tests/lib/install-cursor-hooks-merge.test.js` 增至 11 項（新增：刪掉 ledger 中 hooks 目錄記錄後 uninstall，ECC 條目移除、使用者的 `node .cursor/hooks/my-own-script.js` 保留；修前紅）。
+
+## 2026-11-12：Cursor guard 的逾時覆寫加上下限；stdin 不可用時 fail-closed（複審 A、D）
+
+**A. `ECC_CURSOR_HOOK_TIMEOUT_MS` 沒有範圍**：edebe4a3 新增的覆寫接受任何正整數。設 1 會讓每個健康的 guard 逾時，而 guard 是 fail-closed，結果每個 shell 指令都被擋（實測 `ls` exit 2）；設超大值則讓掛住的 guard 一直等。`resolveHookTimeout` 現在只接受 1000–60000 的整數（純數字字串），非數字、小數、負數、0、超界一律退回預設 15000 並在 stderr 警告一次（含原值與合法範圍）；明確的 `options.timeout` 仍優先。
+
+**D. stdin 空或無法解析**：`before-shell-execution.js` 原本把空輸入當 `{}`、非 JSON 當成指令字串繼續跑，Claude Code 路徑則對無法檢查的請求 exit 2。現在 JSON 解析失敗、空輸入、或解析結果不是物件（`null`、陣列）時，只要仍有啟用的 blocking guard 就 exit 2（BLOCKED 訊息說明原因），guard 都被使用者停用時照舊放行。`tests/hooks/cursor-block-no-verify.test.js` 原有兩項把「空輸入／非 JSON 放行」釘成規格，改為預期 exit 2（非 JSON 內含 `--no-verify` 的案例本來就是 2）。
+
+**測試**：`tests/hooks/cursor-fail-closed.test.js` 增至 21 項，修前 12 項紅：逾時覆寫 1、999、0、-5、abc、1.5、60001、99999999999 皆警告並用預設、健康 guard 不被擋；邊界 1000、60000 接受且無警告；空、非 JSON、`null`、陣列 stdin 皆 exit 2；guard 停用後不擋。
