@@ -864,3 +864,13 @@ main CI（run 43077452803，commit 989a6bfa）紅了三處，原因都在本輪�
 1. **`tests/hooks/cursor-fail-closed.test.js`（macOS／Linux 才紅，本機 Windows 綠）**：`before-shell-execution.js` 在非 Windows 會再跑 `pre-bash-dev-server-block.js`，測試的暫存安裝沒放這支，而 989a6bfa／edebe4a3 又把它標成 `failClosed`，所以「找不到檔」就 exit 2，所有案例（包含逾時覆寫與健康 guard）都被擋。(a) 是 fixture 漏複製，不是安裝清單的產品問題（安裝模組以整個 `scripts/hooks` 目錄為單位，真實安裝帶得到）。(b) dev-server guard 是工作流程提醒（要求在 tmux 啟 dev server），不是安全控制：它自己失敗時不該擋下無關的 shell 指令。修法：只有 `block-no-verify` 維持 fail-closed；dev-server guard 不再傳 `failClosed`，`stdin 不可用` 與兩個 catch 改用 `hasSecurityGuard()`（只看 block-no-verify 是否啟用），原有的 `hasBlockingGuard()`（含 dev-server，截斷輸入時用）不動。測試 fixture 補上健康的 dev-server stub，並用 `NODE_OPTIONS` 預載把 `process.platform` 設為 `linux`，讓 Windows 本機也走 CI 的 POSIX 派送路徑；新增 3 項（dev-server guard 缺失、崩潰、只剩它啟用時 stdin 不可用都不擋）。對 HEAD 版 `before-shell-execution.js` 跑：24 項中 21 過 3 敗；修後 24 / 0。
 2. **`tests/pi/pi-extension-adapter.test.js`（3 項）**：Pi 測試手動列出 `run-with-flags.js` 執行時要 `require` 的檔案來建最小骨架，沒列新增的 `scripts/hooks/safety-hooks.js`，出現 `Cannot find module './safety-hooks'`。清單補上 `safety-hooks.js`（產品安裝不受影響，同上）。
 3. **markdownlint MD058**：上一條上游分流的「四、issue 軸」表格前缺空行，補上。
+
+## 2026-11-12：截斷輸入只看安全類 guard；逾時覆寫補上「實際採用」的測試（覆核 1、2）
+
+**1. 截斷輸入沿用 dev-server 判斷**：0c2c999d 把 stdin 不可用與 catch 改用 `hasSecurityGuard()`，但截斷分支仍用含 dev-server 的 `hasBlockingGuard()`。只剩 dev-server 啟用時，超過 1 MB 的指令會 exit 2 被擋，違反「提醒類出錯時放行」。修法：截斷與讀取失敗分支改用 `hasSecurityGuard()`，並移除已無呼叫者的 `hasBlockingGuard()`。逐一核對其他失敗路徑：JSON 解析失敗、非物件輸入、內層與外層 catch、外層 `.catch` 都已用 `hasSecurityGuard()`；block-no-verify 的 `runExistingHook` 帶 `failClosed`；dev-server 的 `runExistingHook` 不帶 `failClosed`，出錯仍放行。dev-server 自己以 exit 2 拒絕指令屬於它的正常提醒行為，不受影響。
+
+**2. 逾時覆寫只測了警告訊息**：既有測試只驗 stderr 警告，沒驗實際採用的毫秒數，實作若退化成固定 15000 ms 測試仍會綠。新增兩項行為測試：有效值 2000 時，睡 4 秒的 guard 被逾時擋下；非法值 999 退回 15000 時，睡 2.5 秒的 guard 仍完成放行。實作當時本來正確，問題在測試缺口。突變驗證：把 `resolveHookTimeout` 暫改為固定 `DEFAULT_HOOK_TIMEOUT_MS`，新的有效值測試紅（status 0，預期 2），還原後與 HEAD 無差異。
+
+**驗證**：修前截斷且只剩 dev-server 的測試紅（exit 2）；修後 `tests/hooks/cursor-fail-closed.test.js` 29 項全綠。另以真實讀取失敗（stdin 指向目錄，EISDIR）手動驗證：只剩 dev-server 時 exit 0，只剩 block-no-verify 時 exit 2。
+
+**範圍**：只動 `.cursor/hooks` 路徑與其測試，Claude Code 路徑與上游持有的其他檔未動。

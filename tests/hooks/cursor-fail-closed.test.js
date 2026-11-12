@@ -164,5 +164,46 @@ check('unusable stdin is not denied once the guards are disabled', () => {
   assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
 });
 
+console.log('\ntruncated stdin follows the security guard only');
+
+// The dev-server guard is not a security control, so a truncated request must
+// not be refused just because it is enabled. Only block-no-verify may deny.
+const OVERSIZED = 'x'.repeat(1024 * 1024 + 1);
+
+check('truncated stdin is not denied when only the dev-server guard is enabled', () => {
+  const r = run(createInstall('process.exit(0);\n'), { ECC_DISABLED_HOOKS: 'pre:bash:block-no-verify' }, OVERSIZED);
+  assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+});
+
+check('truncated stdin is denied when block-no-verify is enabled', () => {
+  const r = run(createInstall('process.exit(0);\n'), { ECC_DISABLED_HOOKS: 'pre:bash:dev-server-block' }, OVERSIZED);
+  assert.strictEqual(r.status, 2, `status ${r.status}; stderr: ${r.stderr}`);
+  assert.match(r.stderr, /safety limit/);
+});
+
+check('truncated stdin is not denied once every guard is disabled', () => {
+  const r = run(createInstall('process.exit(0);\n'), {
+    ECC_DISABLED_HOOKS: 'pre:bash:block-no-verify,pre:bash:dev-server-block',
+  }, OVERSIZED);
+  assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+});
+
+console.log('\nthe timeout override is the budget actually used');
+
+// A guard that sleeps longer than a valid override must be timed out (fail-closed
+// exit 2); a guard that sleeps longer than an illegal override must still finish
+// under the default budget. Both only pass when the override is really applied.
+check('a valid override (2000 ms) is used: a guard sleeping 4 s is timed out and denied', () => {
+  const r = run(createInstall('setTimeout(() => process.exit(0), 4000);\n'), { ECC_CURSOR_HOOK_TIMEOUT_MS: '2000' });
+  assert.strictEqual(r.status, 2, `status ${r.status}; stderr: ${r.stderr}`);
+  assert.match(r.stderr, /block-no-verify/);
+});
+
+check('an illegal override (999) falls back to 15000 ms: a guard sleeping 2.5 s still completes', () => {
+  const r = run(createInstall('setTimeout(() => process.exit(0), 2500);\n'), { ECC_CURSOR_HOOK_TIMEOUT_MS: '999' });
+  assert.strictEqual(r.status, 0, `status ${r.status}; stderr: ${r.stderr}`);
+  assert.match(r.stderr, /ECC_CURSOR_HOOK_TIMEOUT_MS/);
+});
+
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

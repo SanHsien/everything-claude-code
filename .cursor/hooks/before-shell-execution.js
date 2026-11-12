@@ -6,14 +6,6 @@ const {
   transformToClaude,
 } = require('./adapter');
 
-function hasBlockingGuard() {
-  return hookEnabled('pre:bash:block-no-verify', ['minimal', 'standard', 'strict'])
-    || (
-      process.platform !== 'win32'
-      && hookEnabled('pre:bash:dev-server-block', ['standard', 'strict'])
-    );
-}
-
 // Only block-no-verify is a security control. The dev-server guard is a
 // workflow nudge (it also exits 2 to refuse a command, but a failure of the
 // guard itself must not stop unrelated shell commands), so it stays fail-open.
@@ -31,7 +23,7 @@ function failClosed(reason) {
 readStdin({ includeMetadata: true })
   .then(({ raw, truncated, readError }) => {
     if (truncated || readError) {
-      if (hasBlockingGuard()) {
+      if (hasSecurityGuard()) {
         console.error(truncated
           ? '[Cursor Hook] stdin exceeded the safety limit; blocking beforeShellExecution'
           : '[Cursor Hook] stdin read failed; blocking beforeShellExecution');
