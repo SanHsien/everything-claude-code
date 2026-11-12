@@ -270,11 +270,15 @@ const NO_GIT_FLAGS = Object.freeze({ redirects: false, skipsHooks: false });
 
 // HUSKY=0 turns Husky hooks off; SKIP names pre-commit framework hooks to skip.
 // Only literal values visible in this command's own environment count.
+// Names match case-insensitively: Windows environment names do not differ by case.
 function hookSkipEnvironment(environment) {
-  const husky = environment.get('HUSKY');
-  if (husky === '0' || husky === 'false') return true;
-  const skip = environment.get('SKIP');
-  return typeof skip === 'string' && skip.length > 0;
+  let skips = false;
+  for (const [name, value] of environment) {
+    const upper = name.toUpperCase();
+    if (upper === 'HUSKY' && (value === '0' || value === 'false')) return true;
+    if (upper === 'SKIP' && typeof value === 'string' && value.length > 0) skips = true;
+  }
+  return skips;
 }
 
 function gitEnvironmentFlags(environment, budget) {
@@ -326,6 +330,11 @@ function checkGitAlias(words, budget, start, index, flags, depth) {
 
 // git config that writes core.hooksPath or an include path changes hook
 // resolution or pulls in other configuration for later commands. Reads pass.
+// git 2.46+ subcommand syntax (`git config set <key> <value>`). Only the
+// subcommands that write are checked as writes; get and list are reads.
+const GIT_CONFIG_SUBCOMMANDS = new Set(['set', 'unset', 'get', 'get-all', 'get-regexp', 'list', 'rename-section', 'remove-section', 'edit']);
+const GIT_CONFIG_WRITE_SUBCOMMANDS = new Set(['set', 'unset', 'rename-section', 'remove-section']);
+
 function checkGitConfigWrite(words, budget, start) {
   const operands = [];
   let write = false;
@@ -338,9 +347,15 @@ function checkGitConfigWrite(words, budget, start) {
     if (value.startsWith('-')) continue;
     operands.push(value);
   }
+  let subcommand = null;
+  if (operands.length > 0 && GIT_CONFIG_SUBCOMMANDS.has(operands[0])) subcommand = operands.shift();
+  if (subcommand !== null) {
+    if (!GIT_CONFIG_WRITE_SUBCOMMANDS.has(subcommand)) return null;
+    write = true;
+  }
   const [key, value] = operands;
   if (key === undefined) return null;
-  if (value !== undefined) write = true;
+  if (subcommand === null && value !== undefined) write = true;
   if (!write || !isHookRedirectConfigKey(key)) return null;
   return `BLOCKED: git config would change ${key}, which redirects or extends git hooks. Git hooks must not be bypassed.`;
 }
@@ -399,10 +414,27 @@ const ENV_FLAG_OPTIONS = new Set(['-i', '--ignore-environment', '-0', '--null'])
 const SUDO_VALUE_OPTIONS = new Set(['-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '-T', '-R', '-D']);
 const SUDO_FLAG_OPTIONS = new Set(['-n', '-E', '-H', '-S', '-k', '-K', '-b']);
 const SHELL_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
-// Shell variable names whose literal values shell-state tracking keeps. All
-// identifiers are tracked so that `g=git; $g commit` can be read; values that
-// are dynamic are kept as unknown, never guessed.
+// Shell variable names whose literal values shell-state tracking keeps. Only
+// names the command text references can change how a later word is read, so
+// the rest are not copied through every later state: that copying grew with
+// the square of the number of names and exhausted the analysis budget on long,
+// ordinary input. Hook-skip and git config names are always kept.
 const TRACKED_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ALWAYS_TRACKED_ENV = /^(?:GIT_CONFIG_(?:COUNT|PARAMETERS|(?:KEY|VALUE)_[0-9]+)|HUSKY|SKIP)$/i;
+let referencedShellNames = null;
+
+function referencedNamesIn(text) {
+  const names = new Set();
+  for (const match of text.matchAll(/\$\{?(\w+)/g)) names.add(match[1].toLowerCase());
+  return names;
+}
+
+function isTrackedEnvName(key) {
+  if (!TRACKED_ENV_NAME.test(key)) return false;
+  return referencedShellNames === null
+    || ALWAYS_TRACKED_ENV.test(key)
+    || referencedShellNames.has(key.toLowerCase());
+}
 
 function isEnvSplitFlag(flag) {
   return flag === '-S' || flag === '--split-string'
@@ -447,7 +479,7 @@ function executableWords(words, budget, inherited = new Map(), callerValues = in
     const equals = value.indexOf('=');
     const append = !environmentAssignments && value[equals - 1] === '+';
     const key = value.slice(0, append ? equals - 1 : equals);
-    if (TRACKED_ENV_NAME.test(key)) {
+    if (isTrackedEnvName(key)) {
       const operand = value.slice(equals + 1);
       const count = environments.length;
       budget.spend(count + 1);
@@ -1010,7 +1042,7 @@ function updateShellState(state, normalized, budget) {
     const equals = value.indexOf('=');
     const append = equals > 0 && value[equals - 1] === '+';
     const key = equals < 0 ? value : value.slice(0, append ? equals - 1 : equals);
-    if (!TRACKED_ENV_NAME.test(key)) continue;
+    if (!isTrackedEnvName(key)) continue;
     changed = true;
     if (name !== 'unset' && equals >= 0) assign(key, value.slice(equals + 1), words[i].dynamic, append);
     budget.spend(states.length + 1);
@@ -1103,9 +1135,14 @@ function powershellNormalize(text) {
   if (!text.includes('`') && !text.includes('$')) return text;
   let unescaped = '';
   let inSingle = false;
+  let inDouble = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (ch === "'") inSingle = !inSingle;
+    // Each quote kind toggles only outside the other kind: an apostrophe inside
+    // a double-quoted string is an ordinary character, and so is a double quote
+    // inside a single-quoted one.
+    if (!inDouble && ch === "'") inSingle = !inSingle;
+    else if (!inSingle && ch === '"') inDouble = !inDouble;
     if (!inSingle && ch === '`' && i + 1 < text.length) {
       i++;
       if (text[i] !== '\n' && text[i] !== '\r') unescaped += text[i];
@@ -1115,19 +1152,23 @@ function powershellNormalize(text) {
   }
   const value = '(?:\'([^\']*)\'|"([^"$`]*)"|([A-Za-z0-9_./:-]+))';
   const constants = new Map();
+  const nameOf = (brace, plain) => (brace ?? plain).toLowerCase();
   let normalized = unescaped.replace(new RegExp(`\\$env:(\\w+)\\s*=\\s*${value}`, 'gi'), (match, name, s, d, bare) => (
     `export ${name}=${shellQuote(s ?? d ?? bare)}`
   ));
-  normalized = normalized.replace(new RegExp(`\\$(\\w+)\\s*=\\s*${value}`, 'g'), (match, name, s, d, bare) => {
-    constants.set(name.toLowerCase(), s ?? d ?? bare);
+  normalized = normalized.replace(new RegExp(`\\$(?:\\{(\\w+)\\}|(\\w+))\\s*=\\s*${value}`, 'g'), (match, brace, plain, s, d, bare) => {
+    constants.set(nameOf(brace, plain), s ?? d ?? bare);
     return '';
   });
-  normalized = normalized.replace(/&\s*\$(\w+)(?![\w:])/g, (match, name) => (
-    constants.has(name.toLowerCase()) ? shellQuote(constants.get(name.toLowerCase())) : match
-  ));
-  normalized = normalized.replace(/\$(\w+)(?![\w:])/g, (match, name) => (
-    constants.has(name.toLowerCase()) ? shellQuote(constants.get(name.toLowerCase())) : match
-  ));
+  // Call operator or dot-sourcing, with the variable bare or quoted: & $g, & "$g", . '${g}'.
+  normalized = normalized.replace(/([&.])\s*(["']?)\$(?:\{(\w+)\}|(\w+))\2(?![\w:])/g, (match, op, quote, brace, plain) => {
+    const key = nameOf(brace, plain);
+    return constants.has(key) ? shellQuote(constants.get(key)) : match;
+  });
+  normalized = normalized.replace(/\$(?:\{(\w+)\}|(\w+))(?![\w:])/g, (match, brace, plain) => {
+    const key = nameOf(brace, plain);
+    return constants.has(key) ? shellQuote(constants.get(key)) : match;
+  });
   return normalized;
 }
 
@@ -1141,6 +1182,16 @@ function checkCommand(input) {
 }
 
 function checkShellText(input) {
+  const previous = referencedShellNames;
+  referencedShellNames = new Set([...(previous ?? []), ...referencedNamesIn(input)]);
+  try {
+    return checkShellTextScan(input);
+  } finally {
+    referencedShellNames = previous;
+  }
+}
+
+function checkShellTextScan(input) {
   const budget = createBudget(input.length);
   const pending = [{ text: input, opaque: false, context: { states: [shellState(new Map(), budget)] } }];
   function enqueue(text, opaque = false, context = { states: [shellState(new Map(), budget)] }) {

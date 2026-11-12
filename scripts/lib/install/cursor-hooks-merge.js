@@ -16,8 +16,10 @@
  * one occurrence per record. A user entry that shares a command with ECC's but
  * sits under another event or has other fields is therefore kept.
  *
- * A ledger written before this rule has no `eccEntries`. Nothing proves that an
- * entry there is ECC's, so those entries are kept rather than guessed at.
+ * A ledger written before this rule has no `eccEntries`. For that ledger ECC's
+ * source is used instead: an existing entry is claimed only when it equals a
+ * source entry (same event and content), and each source entry claims at most
+ * one. Entries that do not match are kept.
  *
  * Cursor runs every matching hook from a hooks.json and merges the responses
  * (any deny wins), so ECC's entries go first and the user's follow them.
@@ -89,7 +91,7 @@ function listEccHookRecords(sourceText) {
 
 /**
  * The records the ledger holds for the hooks.json operation. A ledger entry
- * without `eccEntries` contributes nothing, so its entries are retained.
+ * without `eccEntries` contributes nothing.
  *
  * @param {object[]} managedOperations Recorded managed install-state operations.
  * @returns {{ event: string, entry: object }[]}
@@ -109,6 +111,22 @@ function recordedEccEntries(managedOperations = []) {
 
 function recordsForEvent(records, event) {
   return records.filter(record => record.event === event);
+}
+
+/**
+ * The records existing entries are matched against. Ledger records are used as
+ * they are. A hooks.json operation from before per-entry records has none, so
+ * when ECC's source text is available its entries are matched instead.
+ *
+ * @param {object[]} managedOperations Recorded managed install-state operations.
+ * @param {string|null} sourceText ECC's `.cursor/hooks.json`, or null when unavailable.
+ * @returns {{ event: string, entry: object }[]}
+ */
+function eccEntryRecords(managedOperations = [], sourceText = null) {
+  const records = recordedEccEntries(managedOperations);
+  const legacy = managedOperations.some(operation => isCursorHooksOperation(operation) && !Array.isArray(operation.eccEntries));
+  if (legacy && typeof sourceText === 'string') records.push(...listEccHookRecords(sourceText));
+  return records;
 }
 
 /**
@@ -139,7 +157,7 @@ function mergeCursorHooksConfig(existingText, sourceText, managedOperations = []
     return formatJson(source);
   }
   const existing = parseHooksConfig(existingText, 'existing hooks.json');
-  const records = recordedEccEntries(managedOperations);
+  const records = eccEntryRecords(managedOperations, sourceText);
 
   const mergedHooks = {};
   const events = new Set([
@@ -220,7 +238,13 @@ function withCursorHookRecords(plan, recordedOperations = []) {
   }
   for (const operation of plan.operations) {
     if (!isCursorHooksOperation(operation) || typeof operation.sourcePath !== 'string') continue;
-    known.set(operation.destinationPath, listEccHookRecords(fs.readFileSync(operation.sourcePath, 'utf8')));
+    let records;
+    try {
+      records = listEccHookRecords(fs.readFileSync(operation.sourcePath, 'utf8'));
+    } catch (_error) {
+      continue; // source unreadable: keep whatever the ledger recorded for this destination
+    }
+    known.set(operation.destinationPath, records);
   }
   if (known.size === 0) return plan;
   const attach = operation => (
@@ -242,6 +266,7 @@ module.exports = {
   isCursorHooksOperation,
   listEccHookRecords,
   mergeCursorHooksConfig,
+  eccEntryRecords,
   recordedEccEntries,
   stripEccHooksConfig,
   withCursorHookRecords,

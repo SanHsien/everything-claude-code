@@ -40,8 +40,8 @@ const {
 const { transformInstallContent } = require('./install/content-transform');
 const {
   isCursorHooksOperation,
+  eccEntryRecords,
   mergeCursorHooksConfig,
-  recordedEccEntries,
   stripEccHooksConfig,
   withCursorHookRecords,
 } = require('./install/cursor-hooks-merge');
@@ -532,9 +532,19 @@ function retainDriftedCopy(operation, trustedRoot) {
   return null;
 }
 
-// Only the entries the ledger records as ECC's are removed. A ledger from before
-// per-entry records keeps all entries, because nothing shows they are ECC's.
-function uninstallCursorHooks(operation, trustedRoot, managedOperations) {
+// ECC's own hooks.json from the repository, when it can be read. Used to match
+// entries for a ledger from before per-entry records (see eccEntryRecords).
+function readCursorHooksSource(repoRoot, operation) {
+  try {
+    const sourcePath = resolveOperationSourcePath(repoRoot, operation);
+    return sourcePath ? fs.readFileSync(sourcePath, 'utf8') : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+// Only the entries that match what ECC wrote are removed (see eccEntryRecords).
+function uninstallCursorHooks(operation, trustedRoot, managedOperations, repoRoot) {
   const existingDestination = getContainedExistingPath(
     operation.destinationPath,
     trustedRoot,
@@ -546,7 +556,7 @@ function uninstallCursorHooks(operation, trustedRoot, managedOperations) {
   try {
     stripped = stripEccHooksConfig(
       readFileNoFollow(getManagedDestination(existingDestination, trustedRoot, 'uninstall').managedPath, 'utf8'),
-      recordedEccEntries(managedOperations)
+      eccEntryRecords(managedOperations, readCursorHooksSource(repoRoot, operation))
     );
   } catch (_error) {
     // Not a hooks config ECC can interpret: leave the user's file alone.
@@ -560,7 +570,7 @@ function uninstallCursorHooks(operation, trustedRoot, managedOperations) {
 
 function uninstallCopyFile(operation, trustedRoot, options) {
   if (isCursorHooksOperation(operation)) {
-    return uninstallCursorHooks(operation, trustedRoot, options.managedOperations || []);
+    return uninstallCursorHooks(operation, trustedRoot, options.managedOperations || [], options.repoRoot);
   }
   if (options.preserveDriftedCopies) {
     const retained = retainDriftedCopy(operation, trustedRoot);

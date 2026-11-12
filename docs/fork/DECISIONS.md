@@ -887,7 +887,7 @@ Codex 唯讀覆核確認 5 項問題：`block-no-verify` 的字面旗標防護�
 
 **F4（中）持久化 hooks 路徑與 include 寫入**：`git config core.hooksPath ...`、`git config include.path ...`、`git config includeIf.<cond>.path ...` 這類寫入會被擋（讀取放行）。Husky、pre-commit 框架等在程式內呼叫 `git config` 的情況不經這個 shell 檢查，不受影響。若真的需要改 hooksPath，請使用者自己在終端機執行。
 
-**F5（中）Cursor hooks.json 解除安裝誤刪**：所有權改為逐條目判定。安裝時把 ECC 寫入的 `{ event, entry }` 組記入 ledger 的 hooks.json 操作（`eccEntries`）；重裝與解除安裝只移除與記錄「event 相同且內容完全相同」的條目，每筆記錄只消耗一次。同 command 但 event 或欄位不同的使用者條目保留。遷移行為：舊 ledger 沒有 `eccEntries` 時保留全部條目（沒有證據證明它們是 ECC 的，寧可保留）。因此升級後第一次重裝會再插入一份 ECC 條目，之後才由 ledger 追蹤。修補過程另外確認：修復（repair）流程重寫 ledger 時會帶回 hooks.json 記錄，避免之後解除安裝失去所有權資料。
+**F5（中）Cursor hooks.json 解除安裝誤刪**：所有權改為逐條目判定。安裝時把 ECC 寫入的 `{ event, entry }` 組記入 ledger 的 hooks.json 操作（`eccEntries`）；重裝與解除安裝只移除與記錄「event 相同且內容完全相同」的條目，每筆記錄只消耗一次。同 command 但 event 或欄位不同的使用者條目保留。遷移行為（已於 2026-11-13 修正，見該日條目）：舊 ledger 沒有 `eccEntries` 時，重裝與解除安裝改以 ECC 目前的 source 為準，只認領「event 相同、內容與 source 條目完全相同」的條目，每個 source 條目最多認領一次；不相符的條目保留。因此舊安裝升級後重裝不會重複，解除安裝也不留孤兒。修補過程另外確認：修復（repair）流程重寫 ledger 時會帶回 hooks.json 記錄，避免之後解除安裝失去所有權資料。
 
 **未改動**：`tests/lib/install-cursor-hooks-merge.test.js` 未修改，也沒有釘住舊語意；它在本批修改後仍綠（11/11）。
 
@@ -897,7 +897,12 @@ Codex 唯讀覆核確認 5 項問題：`block-no-verify` 的字面旗標防護�
 - 與 Git 內建同名的 alias 保守擋下。
 - 變數間接引用只對字面值已知的整字詞展開；部分引用與動態值一律視為未知，不猜。
 - PowerShell 讀法是啟發式轉譯，不是完整 parser；無法判定的寫法可能漏網。
-- 解除安裝對「只有精確相同、又無安裝來源證明」的重複條目，採保留優先。
+- 舊 ledger 的解除安裝只認領與目前 source 完全相同的條目；若 ECC 版本已變、條目內容不再相同，舊條目會被保留（寧可留，不猜）。
+- `HUSKY=False`、`HUSKY_SKIP_HOOKS=1`（Husky v4）、`LEFTHOOK=0` 刻意不擋：它們的值或名稱不是本 guard 定義的停用訊號，擋了會誤傷。
+- 變數串接（`h=$g; $h commit`）只對字面值已知的整字詞展開；`"$a$b"` 這類拼接視為動態、不猜。
+- `GIT_CONFIG_*` 環境變數定義的 alias，以及 `--config-env` 引入的 alias，未解析。
+- PowerShell `Set-Variable` 與 `${!name}` 間接取值未處理。
+- 同一 shell 輸入中，有 200 個以上不同名稱且各被引用時，分析預算會耗盡而 exit 2（誤擋，不會誤放）。只出現一次或未被引用的名稱不受影響。
 
 **驗證**（工作樹，HOME/USERPROFILE 指向暫存目錄）：
 
@@ -905,3 +910,26 @@ Codex 唯讀覆核確認 5 項問題：`block-no-verify` 的字面旗標防護�
 - run-all 中 `profile-selection` 之後的 47 個檔逐一單獨執行，全數 exit 0。
 - 前段曾紅的 `npm-publish-surface`、`orchestrate-codex-worker` 在工作樹與 HEAD 皆可單獨通過；第一次紅是與 HEAD worktree 建立同時執行造成的競爭（ETIMEDOUT、EPERM），重跑即綠。
 - `npx markdownlint '**/*.md'`（排除 node_modules 與 tmp）無輸出、exit 0；eslint 改動檔 0 error，僅既有的 `apply.js` 兩個 complexity 警告（HEAD 同樣存在）。
+
+## 2026-11-13：fix-first 覆核修正（Opus 審查 dd1a874f）
+
+Opus 審查判定 fix-first：F1–F5 的原始輸入都擋、無誤擋、測試全綠，但有變形輸入放行、退化誤擋與舊 ledger 升級路徑的重複／孤兒。逐項修正，每項先寫紅燈測試、再修到綠。
+
+**1. PowerShell 讀法的引號狀態**（`tests/hooks/block-no-verify-review-fix.test.js`）：單引號原本遇到就切換，不看外層是否在雙引號內，所以 `"it's"` 之後的 `--no-ver（反引號）ify` 會被放行。修法：單引號只在雙引號外切換，雙引號只在單引號外切換。紅：`git commit -m "it's" --no-ver（反引號）ify -m x` 與 `Write-Output "don't"; git commit --no-ver（反引號）ify -m x` 放行（exit 0）。綠：兩者皆擋。
+
+**2. 引號包住的變數呼叫與 `${g}` 賦值**：`& "$g"`、`. "$g"` 與 `${g}='git'` 原本不展開。修法：呼叫運算子後接裸變數或引號變數都替換為常數；賦值接受 `${name}` 形式。紅：`$g='git'; & "$g" commit --no-verify` 放行。綠：`& "$g"`、`. "$g"`、`${g}='git'; & $g`、`${g}='git'; & "${g}"` 皆擋。`Set-Variable` 未處理，列入已知限制。
+
+**3. 停用變數名稱大小寫**：`$env:husky='0'` 原本放行，因為名稱比對區分大小寫。修法：HUSKY 與 SKIP 比對不分大小寫（Windows 環境變數名稱本來就不分）。紅：`$env:husky='0'; git commit -m x` 與 `$env:skip='pre-commit'; ...` 放行。綠：皆擋。
+
+**4. git 2.46+ 的 `git config` 子命令語法**：`git config set core.hooksPath ...` 原本被當成讀取。修法：先移除子命令；`set`、`unset`、`rename-section`、`remove-section` 視為寫入，`get`、`list` 等視為讀取。`unset core.hooksPath` 也擋。紅：`git config set core.hooksPath /tmp/x`、`git config set --global core.hooksPath x`、`git config unset core.hooksPath` 放行。綠：皆擋；`get core.hooksPath`、`list`、`--get core.hooksPath`、`set user.name` 仍放行。
+
+**5. 狀態複製的平方成本造成退化誤擋**：F1–F3 之後，所有名稱都會被追蹤，每條指令複製整張變數表，成本隨名稱數平方增長。原本 800 行 `vN=x` 與 200 個 export 加 `git status` 都會因預算耗盡而 exit 2（舊版放行）。修法：只追蹤指令文字中被引用的名稱，外加 HUSKY、SKIP、GIT_CONFIG_* 這三類必定相關的名稱。紅：800 行 `vN=x` 加 `git status` 被擋（exit 2）。綠：放行。另外修掉一個自己引入的遞迴（篩選條件誤替換了 `isTrackedEnvName` 本身），由測試即時抓出。200 個各自被引用的不同名稱仍會耗盡預算，列入已知限制（誤擋，不誤放）。
+
+**6. 舊 ledger 升級路徑**（`tests/scripts/cursor-hooks-legacy-ledger.test.js`，用真正的 install／uninstall／repair CLI 在隔離環境測三條路徑）：舊 ledger 沒有 `eccEntries`，原本重裝會重複插入（32 筆，應為 17），解除安裝只移除部分（留 15 筆指向已刪檔的孤兒）。修法：舊 ledger 時以目前 ECC source 為比對基準，只認領 event 相同、內容完全相同、每筆最多一次的條目；解除安裝重新讀取 source。紅：三條路徑皆失敗。綠：直接解除安裝、先重裝、先 repair 各路徑都只剩使用者條目（或正確的 ECC 條目數），無重複、無孤兒，使用者條目保留。
+
+**低優先**：
+- `withCursorHookRecords` 讀取 source 失敗時原本直接拋錯，與註解描述不符。修法：讀取失敗時退回 ledger 已記錄的 eccEntries（`tests/lib/cursor-hooks-records.test.js`，紅後綠）。
+- 「合法的兩層 alias 放行」釘子測試：`git -c alias.a=b -c alias.b=status a` 放行。以 `MAX_GIT_ALIAS_DEPTH = 1` 的暫存副本實測，該指令改為 exit 2，確認釘子會紅。
+- 已知限制補齊（見 2026-11-12 條目的已知限制段）：`HUSKY=False`、`HUSKY_SKIP_HOOKS=1`、`LEFTHOOK=0` 刻意不擋；變數串接、`"$a$b"` 拼接、GIT_CONFIG_* 與 `--config-env` alias、`Set-Variable`、`${!name}`、200 個以上各被引用的不同名稱。
+
+**驗證**（HOME/USERPROFILE 指向暫存目錄）：`block-no-verify-review-fix` 21/21、`block-no-verify-bypass-review` 28/28、`block-no-verify` 819/819、`cursor-fail-closed` 29/29、`cursor-hooks-ownership` 6/6、`install-cursor-hooks-merge` 11/11、`cursor-hook-dispatchers` 27/27、`cursor-hooks-legacy-ledger` 3/3、`cursor-hooks-records` 2/2。
