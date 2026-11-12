@@ -902,7 +902,11 @@ Codex 唯讀覆核確認 5 項問題：`block-no-verify` 的字面旗標防護�
 - 變數串接（`h=$g; $h commit`）只對字面值已知的整字詞展開；`"$a$b"` 這類拼接視為動態、不猜。
 - `GIT_CONFIG_*` 環境變數定義的 alias，以及 `--config-env` 引入的 alias，未解析。
 - PowerShell `Set-Variable` 與 `${!name}` 間接取值未處理。
-- 同一 shell 輸入中，有 200 個以上不同名稱且各被引用時，分析預算會耗盡而 exit 2（誤擋，不會誤放）。只出現一次或未被引用的名稱不受影響。
+- 同一 shell 輸入中，約 250 個以上各自被引用的不同名稱，或動態值互相引用的賦值鏈（例如 `x1=$x0`、`x2=$x1` 連續五行左右），分析預算會耗盡而 exit 2。這是 8ceb8045 已有的行為，不是本輪引入；結果是誤擋，不會誤放。`export Vn=x; echo $Vn` 形式 200 行仍放行。
+- `bash -c "$g …"`：外層雙引號讓外層 shell 先展開 `$g`，hook 讀到的已是展開後的字串，之後的解讀不經它。**這是實際放行的繞過**（`g=git; bash -c "$g commit --no-verify"` 實測 exit 0），記為已知限制，未修。
+- `$'\x24g'` ANSI-C 寫法：在 `bash -c` 內解碼成 `$g` 後才展開，hook 不解碼 ANSI-C 逸出，實測 `g=git; $'\x24g commit --no-verify'` 放行。
+- `declare -n` 名稱參照：`g=git; declare -n r=g; $r commit --no-verify` 放行，未解析 nameref。
+- 環境變數名稱間接取值：`GIT_CONFIG_KEY_0=$k`（`k` 指向 `core.hooksPath`）放行；字面值形式 `GIT_CONFIG_KEY_0=core.hooksPath` 仍擋。
 
 **驗證**（工作樹，HOME/USERPROFILE 指向暫存目錄）：
 
@@ -933,3 +937,17 @@ Opus 審查判定 fix-first：F1–F5 的原始輸入都擋、無誤擋、測試
 - 已知限制補齊（見 2026-11-12 條目的已知限制段）：`HUSKY=False`、`HUSKY_SKIP_HOOKS=1`、`LEFTHOOK=0` 刻意不擋；變數串接、`"$a$b"` 拼接、GIT_CONFIG_* 與 `--config-env` alias、`Set-Variable`、`${!name}`、200 個以上各被引用的不同名稱。
 
 **驗證**（HOME/USERPROFILE 指向暫存目錄）：`block-no-verify-review-fix` 21/21、`block-no-verify-bypass-review` 28/28、`block-no-verify` 819/819、`cursor-fail-closed` 29/29、`cursor-hooks-ownership` 6/6、`install-cursor-hooks-merge` 11/11、`cursor-hook-dispatchers` 27/27、`cursor-hooks-legacy-ledger` 3/3、`cursor-hooks-records` 2/2。
+
+## 2026-11-13：複審 fix-first 第三輪（8ceb8045）
+
+複審確認第 1–4、6 項與低項已修好，另提出三項：A 新繞過、B 狀態複製的平方成本、C rename-section 目標段落未查。本輪先寫紅燈測試再修（`tests/hooks/block-no-verify-shell-state.test.js`、`tests/hooks/block-no-verify-config-rename.test.js`）。
+
+**A. 引號拆開的變數參照（新繞過，修）**：`referencedNamesIn` 在引號移除前以正則掃原文，`$''g`、`$'g'` 這類拆開的 `$` 不會被視為參照，該名稱不被追蹤，變數不展開。修法：拿掉預先篩選，改為追蹤所有識別字（`isTrackedEnvName` 只看名稱形式）。紅：`export g=git; bash -c '$''g commit --no-verify'`、`export g=git; bash -c '$'"g commit --no-verify"'`、`export f=--no-verify; bash -c 'git commit $''f'`、`g=git; eval '$''g commit --no-verify'` 放行。綠：四者皆擋。
+
+**B. 狀態複製的平方成本（根治）**：每條分支完整複製變數表，成本隨名稱數平方增長。修法：`ShellTable` 為持久化結構。分叉時兩邊各接一個新的寫入層、共享已寫入的舊層；寫入只進最新層，已分叉的層不再寫；刪除以墓碑表示；每 16 次分叉攤平一次，避免查找鏈過長。紅：`export Vn=x; echo $Vn` 加 `git status` 共 200 行 exit 2。綠：放行，耗時約 20 ms（測試限制 1 秒）。800 行 `vn=x; echo $vn` 加 `git status` 在本輪前的樹上已放行，未能重現複審回報的 exit 2；測試仍釘住該形式。
+
+**C. rename-section 的目標段落（修）**：`set foo.hooksPath /dev/null; rename-section foo core` 會把 `core.hooksPath` 設為 `/dev/null`，原本只檢查來源段落故放行。修法：`rename-section`（子命令語法）與 `--rename-section`（舊語法）都改以目標段落判定；目標為 `core`、`include`、`includeIf.*`（不分大小寫）即擋。紅：六種擋的寫法與兩種放行的寫法（`rename-section foo bar`、`--rename-section foo bar`）依預期分別失敗或通過。綠：皆依預期。
+
+**已知限制補充**：見 2026-11-12 條目的已知限制段（已依實測更新）。其中 `bash -c "$g …"` 是實際放行的繞過，已明記。
+
+**驗證**（HOME/USERPROFILE 指向暫存目錄）：`block-no-verify-shell-state` 7/7、`block-no-verify-config-rename` 8/8、`block-no-verify-review-fix` 21/21、`block-no-verify-bypass-review` 28/28、`block-no-verify` 819/819、`cursor-fail-closed` 29/29、`cursor-hook-dispatchers` 27/27、`cursor-hooks-ownership` 6/6、`install-cursor-hooks-merge` 11/11、`cursor-hooks-legacy-ledger` 3/3、`cursor-hooks-records` 2/2。

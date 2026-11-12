@@ -31,6 +31,13 @@ function isHookRedirectConfigKey(key) {
     || /^includeif\..*\.path$/.test(normalized);
 }
 
+// A section that rename-section would move keys into. git compares section
+// names case-insensitively.
+function isHookRedirectSection(name) {
+  const normalized = name.toLowerCase();
+  return normalized === 'core' || normalized === 'include' || normalized === 'includeif' || normalized.startsWith('includeif.');
+}
+
 function isHookRedirectSetting(setting) {
   return isHookRedirectConfigKey(setting.split('=', 1)[0]);
 }
@@ -338,10 +345,12 @@ const GIT_CONFIG_WRITE_SUBCOMMANDS = new Set(['set', 'unset', 'rename-section', 
 function checkGitConfigWrite(words, budget, start) {
   const operands = [];
   let write = false;
+  let renamesSection = false;
   for (let index = start; index < words.length; index++) {
     const value = words[index].value;
     budget.spend(value.length + 1);
     if (value === '--') { operands.push(...words.slice(index + 1).map(word => word.value)); break; }
+    if (value === '--rename-section') renamesSection = true;
     if (GIT_CONFIG_WRITE_FLAGS.has(value)) { write = true; continue; }
     if (GIT_CONFIG_VALUE_OPTIONS.has(value)) { index++; continue; }
     if (value.startsWith('-')) continue;
@@ -352,6 +361,14 @@ function checkGitConfigWrite(words, budget, start) {
   if (subcommand !== null) {
     if (!GIT_CONFIG_WRITE_SUBCOMMANDS.has(subcommand)) return null;
     write = true;
+  }
+  // rename-section moves the keys of the old section into the new one, so the
+  // target section decides. Both `rename-section <old> <new>` and the old
+  // `--rename-section <old> <new>` syntax carry the target as the second operand.
+  if (renamesSection || subcommand === 'rename-section') {
+    const target = operands[1];
+    if (target === undefined || !isHookRedirectSection(target)) return null;
+    return `BLOCKED: git config would rename a section into ${target}, which redirects or extends git hooks. Git hooks must not be bypassed.`;
   }
   const [key, value] = operands;
   if (key === undefined) return null;
@@ -414,26 +431,14 @@ const ENV_FLAG_OPTIONS = new Set(['-i', '--ignore-environment', '-0', '--null'])
 const SUDO_VALUE_OPTIONS = new Set(['-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '-T', '-R', '-D']);
 const SUDO_FLAG_OPTIONS = new Set(['-n', '-E', '-H', '-S', '-k', '-K', '-b']);
 const SHELL_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
-// Shell variable names whose literal values shell-state tracking keeps. Only
-// names the command text references can change how a later word is read, so
-// the rest are not copied through every later state: that copying grew with
-// the square of the number of names and exhausted the analysis budget on long,
-// ordinary input. Hook-skip and git config names are always kept.
+// Shell variable names whose literal values shell-state tracking keeps: every
+// identifier. A pre-scan of the raw text for referenced names was not sound
+// (quote-split references such as $''g are invisible to it), so nothing is
+// filtered out before the shell state tables are built.
 const TRACKED_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const ALWAYS_TRACKED_ENV = /^(?:GIT_CONFIG_(?:COUNT|PARAMETERS|(?:KEY|VALUE)_[0-9]+)|HUSKY|SKIP)$/i;
-let referencedShellNames = null;
-
-function referencedNamesIn(text) {
-  const names = new Set();
-  for (const match of text.matchAll(/\$\{?(\w+)/g)) names.add(match[1].toLowerCase());
-  return names;
-}
 
 function isTrackedEnvName(key) {
-  if (!TRACKED_ENV_NAME.test(key)) return false;
-  return referencedShellNames === null
-    || ALWAYS_TRACKED_ENV.test(key)
-    || referencedShellNames.has(key.toLowerCase());
+  return TRACKED_ENV_NAME.test(key);
 }
 
 function isEnvSplitFlag(flag) {
@@ -971,14 +976,114 @@ function pipelineSources(command, budget) {
 
 const DECLARATIONS = new Set(['export', 'declare', 'typeset', 'readonly', 'unset']);
 
+// Persistent shell state tables. A fork shares every layer already written, so
+// copying state is constant work and each branch records only what it changes.
+// Writes go to the newest layer; a layer that has been forked is never written
+// again. Removals are tombstones that hide older layers. Chains are flattened
+// every SHELL_LAYER_LIMIT forks so lookups stay short.
+const SHELL_TOMBSTONE = Symbol('removed');
+const SHELL_LAYER_LIMIT = 16;
+
+class ShellLayer {
+  constructor(parent, depth) {
+    this.parent = parent;
+    this.depth = depth;
+    this.own = new Map();
+  }
+}
+
+class ShellTable {
+  constructor(entries = []) {
+    this.head = new ShellLayer(null, 0);
+    for (const [key, value] of entries) this.head.own.set(key, value);
+  }
+
+  lookup(key) {
+    for (let layer = this.head; layer !== null; layer = layer.parent) {
+      if (layer.own.has(key)) {
+        const value = layer.own.get(key);
+        return value === SHELL_TOMBSTONE ? null : { value };
+      }
+    }
+    return null;
+  }
+
+  has(key) {
+    return this.lookup(key) !== null;
+  }
+
+  get(key) {
+    const hit = this.lookup(key);
+    return hit === null ? undefined : hit.value;
+  }
+
+  set(key, value) {
+    this.head.own.set(key, value);
+  }
+
+  add(key) {
+    this.head.own.set(key, true);
+  }
+
+  delete(key) {
+    this.head.own.set(key, SHELL_TOMBSTONE);
+  }
+
+  // Live entries with every layer applied, oldest layer first.
+  merged() {
+    const layers = [];
+    for (let layer = this.head; layer !== null; layer = layer.parent) layers.push(layer);
+    const entries = new Map();
+    for (let i = layers.length - 1; i >= 0; i--) {
+      for (const [key, value] of layers[i].own) {
+        if (value === SHELL_TOMBSTONE) entries.delete(key);
+        else entries.set(key, value);
+      }
+    }
+    return entries;
+  }
+
+  get size() {
+    return this.merged().size;
+  }
+
+  [Symbol.iterator]() {
+    return this.merged().keys();
+  }
+
+  // Both tables continue from fresh layers on top of the layers they share.
+  fork(budget) {
+    if (this.head.depth >= SHELL_LAYER_LIMIT) {
+      const entries = this.merged();
+      budget.spend(entries.size + 1);
+      const flat = new ShellLayer(null, 0);
+      for (const [key, value] of entries) flat.own.set(key, value);
+      this.head = flat;
+    }
+    const shared = this.head;
+    this.head = new ShellLayer(shared, shared.depth + 1);
+    const copy = new ShellTable();
+    copy.head = new ShellLayer(shared, shared.depth + 1);
+    return copy;
+  }
+}
+
 function shellState(environment, budget) {
   budget.spend(2 * environment.size + 1);
-  return { variables: new Map(environment), exported: new Set(environment.keys()), readonly: new Set() };
+  return {
+    variables: new ShellTable(environment),
+    exported: new ShellTable([...environment.keys()].map(name => [name, true])),
+    readonly: new ShellTable(),
+  };
 }
 
 function copyShellState(state, budget) {
-  budget.spend(state.variables.size + state.exported.size + state.readonly.size + 1);
-  return { variables: new Map(state.variables), exported: new Set(state.exported), readonly: new Set(state.readonly) };
+  budget.spend(3);
+  return {
+    variables: state.variables.fork(budget),
+    exported: state.exported.fork(budget),
+    readonly: state.readonly.fork(budget),
+  };
 }
 
 function copyShellContext(context, budget) {
@@ -1182,16 +1287,6 @@ function checkCommand(input) {
 }
 
 function checkShellText(input) {
-  const previous = referencedShellNames;
-  referencedShellNames = new Set([...(previous ?? []), ...referencedNamesIn(input)]);
-  try {
-    return checkShellTextScan(input);
-  } finally {
-    referencedShellNames = previous;
-  }
-}
-
-function checkShellTextScan(input) {
   const budget = createBudget(input.length);
   const pending = [{ text: input, opaque: false, context: { states: [shellState(new Map(), budget)] } }];
   function enqueue(text, opaque = false, context = { states: [shellState(new Map(), budget)] }) {
