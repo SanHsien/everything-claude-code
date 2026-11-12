@@ -398,6 +398,14 @@ function checkGitWords(words, budget, start = 0, flags = NO_GIT_FLAGS, depth = 0
 // Keep literal outcomes and the empty result of an unresolved expansion. The
 // latter is a base for later visible += operands, not arbitrary evaluation.
 function assignmentValues(prior, operand, append, dynamic, budget) {
+  if (prior instanceof ShellValues) {
+    const out = new Set();
+    for (const option of prior.options) {
+      for (const value of assignmentValues(option === SHELL_UNSET ? undefined : option, operand, append, dynamic, budget)) out.add(value);
+    }
+    if (out.size > MAX_SHELL_VALUES) throw new UnknownShellState();
+    return [...out];
+  }
   const base = prior === undefined ? '' : prior;
   budget.spend((append ? base.length : 0) + operand.length + 1);
   const values = new Set([append ? base + operand : operand]);
@@ -976,6 +984,25 @@ function pipelineSources(command, budget) {
 
 const DECLARATIONS = new Set(['export', 'declare', 'typeset', 'readonly', 'unset']);
 
+// A variable with several possible values; SHELL_UNSET is one of them when the
+// variable may be unset. Merged branch states produce these.
+const SHELL_UNSET = Symbol('unset');
+const MAX_SHELL_VALUES = 8;
+const MAX_SHELL_VARIANTS = 64;
+
+// A sticky cell comes from a variable that is readonly in only some merged
+// branches: each later assignment adds its values to the ones already held,
+// because the readonly branch keeps its value while the other takes the new one.
+class ShellValues {
+  constructor(options, sticky = false) {
+    this.options = new Set(options);
+    this.sticky = sticky;
+    if (this.options.size > MAX_SHELL_VALUES) throw new UnknownShellState();
+  }
+}
+
+class UnknownShellState extends Error {}
+
 // Persistent shell state tables. A fork shares every layer already written, so
 // copying state is constant work and each branch records only what it changes.
 // Writes go to the newest layer; a layer that has been forked is never written
@@ -1068,6 +1095,89 @@ class ShellTable {
   }
 }
 
+// A variable's possible values, as a list. null stands for "not a literal
+// value here" (unset, or not exported for an environment).
+function shellOptions(cell) {
+  if (cell === undefined) return [null];
+  if (cell instanceof ShellValues) return [...cell.options].map(option => (option === SHELL_UNSET ? null : option));
+  return [cell];
+}
+
+function shellCombinations(optionLists, budget) {
+  let combinations = [new Map()];
+  for (const [name, options] of optionLists) {
+    budget.spend(combinations.length * options.length + 1);
+    if (combinations.length * options.length > MAX_SHELL_VARIANTS) throw new UnknownShellState();
+    const next = [];
+    for (const combination of combinations) {
+      for (const option of options) {
+        const copy = new Map(combination);
+        copy.set(name, option);
+        next.push(copy);
+      }
+    }
+    combinations = next;
+  }
+  return combinations;
+}
+
+function cellOf(values) {
+  if (values.length === 1) return values[0];
+  if (values.length > MAX_SHELL_VALUES) throw new UnknownShellState();
+  return new ShellValues(values);
+}
+
+// The possible values of one variable across branch states, and whether any
+// branch holds it sticky. An unset branch contributes SHELL_UNSET.
+function unionOfCells(name, states, sticky) {
+  const options = new Set();
+  let isSticky = sticky;
+  for (const state of states) {
+    const cell = state.variables.get(name);
+    if (cell === undefined) {
+      options.add(SHELL_UNSET);
+    } else if (cell instanceof ShellValues) {
+      isSticky ||= cell.sticky;
+      for (const option of cell.options) options.add(option);
+    } else {
+      options.add(cell);
+    }
+  }
+  return { options, sticky: isSticky };
+}
+
+// Union of branch states. A variable with more than one possibility is kept
+// as all of them, so every command that reads it is checked for each one. A
+// variable readonly in only some branches becomes sticky (see ShellValues).
+// Too many possibilities leave the branches unmerged, under the same budget.
+function mergeShellStates(states, budget) {
+  if (states.length < 2) return states;
+  budget.spend(states.length + 1);
+  const names = new Set();
+  const readonlyNames = new Set();
+  for (const state of states) {
+    for (const name of state.variables) names.add(name);
+    for (const name of state.readonly) readonlyNames.add(name);
+  }
+  const mixed = new Set();
+  for (const name of readonlyNames) {
+    if (states.filter(state => state.readonly.has(name)).length !== states.length) mixed.add(name);
+  }
+  const variables = new ShellTable();
+  for (const name of new Set([...names, ...mixed])) {
+    const { options, sticky } = unionOfCells(name, states, mixed.has(name));
+    budget.spend(options.size + 1);
+    if (options.size > MAX_SHELL_VALUES) return states;
+    const [single] = options;
+    variables.set(name, options.size === 1 && !sticky && typeof single === 'string' ? single : new ShellValues(options, sticky));
+  }
+  const exported = new ShellTable();
+  for (const state of states) for (const name of state.exported) exported.add(name);
+  const readonly = new ShellTable();
+  for (const name of readonlyNames) if (!mixed.has(name)) readonly.add(name);
+  return [{ variables, exported, readonly }];
+}
+
 function shellState(environment, budget) {
   budget.spend(2 * environment.size + 1);
   return {
@@ -1091,13 +1201,25 @@ function copyShellContext(context, budget) {
   return { states: context.states.map(state => copyShellState(state, budget)) };
 }
 
-function exportedEnvironment(state, budget) {
-  const environment = new Map();
+// Environments a command can run under: one per combination of the possible
+// values of the exported variables that have more than one possibility.
+function exportedEnvironments(state, budget) {
   budget.spend(state.exported.size + 1);
+  const base = new Map();
+  const varying = [];
   for (const name of state.exported) {
-    if (state.variables.has(name)) environment.set(name, state.variables.get(name));
+    const options = shellOptions(state.variables.get(name));
+    if (options.length === 1) {
+      if (options[0] !== null) base.set(name, options[0]);
+    } else {
+      varying.push([name, options]);
+    }
   }
-  return environment;
+  return shellCombinations(varying, budget).map(combination => {
+    const environment = new Map(base);
+    for (const [name, value] of combination) if (value !== null) environment.set(name, value);
+    return environment;
+  });
 }
 
 // Literal declaration operands are data, not executable source. A value and
@@ -1114,6 +1236,12 @@ function updateShellState(state, normalized, budget) {
     for (let n = 0; n < count; n++) {
       const current = states[n];
       if (current.readonly.has(name)) continue;
+      const prior = current.variables.get(name);
+      if (prior instanceof ShellValues) {
+        const values = assignmentValues(prior, value, append, dynamic, budget);
+        current.variables.set(name, prior.sticky ? new ShellValues([...prior.options, ...values], true) : cellOf(values));
+        continue;
+      }
       const values = assignmentValues(current.variables.get(name), value, append, dynamic, budget);
       for (const alternative of values.slice(1)) {
         const variant = copyShellState(current, budget);
@@ -1216,16 +1344,24 @@ function applyDeclaration(current, key, equals, declaration) {
 // literal value shell-state tracking holds is replaced by that value, so
 // `g=git; $g commit` is read as git. Unknown or partial references stay
 // dynamic and are not guessed.
-function expandKnownWords(words, variables, budget) {
-  if (!variables.size) return words;
-  return words.map(word => {
+// One word list per combination of the possible values of the variables the
+// words reference. A possibility that is not a literal value leaves the word
+// dynamic, exactly as a single unknown value does.
+function wordVariants(words, variables, budget) {
+  const slots = words.map(word => {
     budget.spend(1);
-    if (!word.dynamic) return word;
+    if (!word.dynamic) return null;
     const match = /^\$(\w+)$|^\$\{(\w+)\}$/.exec(word.value);
-    const name = match ? (match[1] ?? match[2]) : undefined;
-    if (name === undefined || typeof variables.get(name) !== 'string') return word;
-    return { ...word, value: variables.get(name), dynamic: false, literal: true };
+    return match ? (match[1] ?? match[2]) : null;
   });
+  const names = [...new Set(slots.filter(name => name !== null))];
+  const combinations = shellCombinations(names.map(name => [name, shellOptions(variables.get(name))]), budget);
+  return combinations.map(binding => words.map((word, index) => {
+    const name = slots[index];
+    if (name === null || !binding.has(name)) return word;
+    const value = binding.get(name);
+    return value === null ? word : { ...word, value, dynamic: false, literal: true };
+  }));
 }
 
 function shellQuote(value) {
@@ -1380,35 +1516,45 @@ function checkShellText(input) {
   // Advance one literal shell state through the command: apply declarations
   // and prefix assignments, then inspect the executable under each resulting
   // environment.
+  // Advance one literal shell state through the command. The state mutation
+  // depends on the words and the state, not on the exported environment, so it
+  // runs once per word variant; each environment variant then only inspects the
+  // executable under its own environment.
   function inspectState(frame, state) {
     const { command, conditional } = frame;
-    const normalized = executableWords(expandKnownWords(command.words, state.variables, budget), budget, exportedEnvironment(state, budget), state.variables);
-    const { words, environments } = normalized;
-    const next = copyShellState(state, budget);
-    const evalPrefix = normalized.local && words[0]?.value === 'eval' && normalized.prefixAssignments.size > 0;
-    const mutation = updateShellState(next, evalPrefix ? { ...normalized, assignmentOnly: true } : normalized, budget);
-    if (evalPrefix) {
-      frame.alternatives.push(state);
-      budget.spend(mutation.states.length * (normalized.prefixAssignments.size + 1));
-      for (const variant of mutation.states) for (const name of normalized.prefixAssignments.keys()) variant.exported.add(name);
-    }
-    budget.spend(mutation.states.length + 1);
-    frame.alternatives.push(...mutation.states);
-    if (mutation.changed && (conditional || mutation.uncertain)) frame.alternatives.push(state);
-    frame.changed ||= mutation.changed;
-    if (mutation.handled && !evalPrefix) return null;
-    const role = commandRole(words, budget);
-    budget.spend(environments.length + 1);
-    for (const environment of environments) {
-      const reason = inspectEnvironment(frame, role, normalized, environment);
-      if (reason) return reason;
+    for (const commandWords of wordVariants(command.words, state.variables, budget)) {
+      const environmentVariants = exportedEnvironments(state, budget);
+      const first = executableWords(commandWords, budget, environmentVariants[0], state.variables);
+      const { words } = first;
+      const next = copyShellState(state, budget);
+      const evalPrefix = first.local && words[0]?.value === 'eval' && first.prefixAssignments.size > 0;
+      const mutation = updateShellState(next, evalPrefix ? { ...first, assignmentOnly: true } : first, budget);
+      if (evalPrefix) {
+        frame.alternatives.push(state);
+        budget.spend(mutation.states.length * (first.prefixAssignments.size + 1));
+        for (const variant of mutation.states) for (const name of first.prefixAssignments.keys()) variant.exported.add(name);
+      }
+      budget.spend(mutation.states.length + 1);
+      frame.alternatives.push(...mutation.states);
+      if (mutation.changed && (conditional || mutation.uncertain)) frame.alternatives.push(state);
+      frame.changed ||= mutation.changed;
+      if (mutation.handled && !evalPrefix) continue;
+      const role = commandRole(words, budget);
+      for (const exported of environmentVariants) {
+        const normalized = exported === environmentVariants[0] ? first : executableWords(commandWords, budget, exported, state.variables);
+        budget.spend(normalized.environments.length + 1);
+        for (const environment of normalized.environments) {
+          const reason = inspectEnvironment(frame, role, normalized, environment);
+          if (reason) return reason;
+        }
+      }
     }
     return null;
   }
   // Commit the command's resulting states and queue whatever it would run.
   function finishCommand(frame) {
     const { command, context, parent, conditional, sameShellCode, changed } = frame;
-    context.states = frame.alternatives;
+    context.states = mergeShellStates(frame.alternatives, budget);
     // Bash lastpipe and zsh can execute a final pipeline builtin in the
     // parent shell. Preserve that possible state as well as isolation; this
     // is deliberately conservative when the host shell/options are unknown.
@@ -1453,7 +1599,7 @@ function checkShellText(input) {
       const task = pending.pop();
       if (task.mergeInto) {
         budget.spend(task.context.states.length + 1);
-        task.mergeInto.states.push(...task.context.states);
+        task.mergeInto.states = mergeShellStates([...task.mergeInto.states, ...task.context.states], budget);
         continue;
       }
       if (!task.command) { expandText(task); continue; }
@@ -1463,6 +1609,9 @@ function checkShellText(input) {
   } catch (error) {
     if (error instanceof UnsupportedEnvSplitEscape) {
       return { blocked: true, reason: 'BLOCKED: Unsupported env split-string escape; hook-bypass safety could not be established.' };
+    }
+    if (error instanceof UnknownShellState) {
+      return { blocked: true, reason: 'BLOCKED: Shell state is too branched to verify; hook-bypass safety could not be established.' };
     }
     if (error instanceof UnsupportedSedEscape) {
       return { blocked: true, reason: 'BLOCKED: Unsupported sed script escape; hook-bypass safety could not be established.' };

@@ -1952,12 +1952,14 @@ for (const [family, expected, command] of [...stickyEnvironmentCases, ...appendC
 }
 
 for (const n of [8, 12]) {
-  if (test(`conditional environment alternatives charge copies within a shared quota at ${n}`, () => {
+  // Branch states that reach the same point are merged (round 4), so these
+  // inputs no longer multiply states and are allowed. The property that still
+  // matters is that every copy is charged to the shared quota and stays bounded.
+  if (test(`conditional environment alternatives are merged and stay within a shared quota at ${n}`, () => {
     const command = 'export GIT_CONFIG_COUNT=0; ' + 'true && GIT_CONFIG_COUNT=0; '.repeat(n) + 'git status';
     const result = countedClassification(command, 3000);
-    assert.strictEqual(result.result.exitCode, 2, JSON.stringify(result));
-    assert.match(result.result.stderr, /work budget/);
-    assert.ok(result.spent >= 3000 && result.spent < 3100, JSON.stringify(result));
+    assert.strictEqual(result.result.exitCode, 0, JSON.stringify(result));
+    assert.ok(result.spent < 3000, JSON.stringify(result));
     // Include fixed module-level Set construction as a constant allowance.
     assert.ok(result.copiedStateEntries <= result.spent + 128, JSON.stringify(result));
   })) passed++; else failed++;

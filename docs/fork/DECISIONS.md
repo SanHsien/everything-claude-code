@@ -902,7 +902,7 @@ Codex 唯讀覆核確認 5 項問題：`block-no-verify` 的字面旗標防護�
 - 變數串接（`h=$g; $h commit`）只對字面值已知的整字詞展開；`"$a$b"` 這類拼接視為動態、不猜。
 - `GIT_CONFIG_*` 環境變數定義的 alias，以及 `--config-env` 引入的 alias，未解析。
 - PowerShell `Set-Variable` 與 `${!name}` 間接取值未處理。
-- 同一 shell 輸入中，約 250 個以上各自被引用的不同名稱，或動態值互相引用的賦值鏈（例如 `x1=$x0`、`x2=$x1` 連續五行左右），分析預算會耗盡而 exit 2。這是 8ceb8045 已有的行為，不是本輪引入；結果是誤擋，不會誤放。`export Vn=x; echo $Vn` 形式 200 行仍放行。
+- 同一 shell 輸入中，約 250 個以上各自被引用的不同名稱，或動態值互相引用的賦值鏈（例如 `x_i=$x_(i%7)` 形式、約 100 行以上），分析預算會耗盡而 exit 2。結果是誤擋，不會誤放。`export Vn=x; echo $Vn` 形式 200 行仍放行。
 - `bash -c "$g …"`：外層雙引號讓外層 shell 先展開 `$g`，hook 讀到的已是展開後的字串，之後的解讀不經它。**這是實際放行的繞過**（`g=git; bash -c "$g commit --no-verify"` 實測 exit 0），記為已知限制，未修。
 - `$'\x24g'` ANSI-C 寫法：在 `bash -c` 內解碼成 `$g` 後才展開，hook 不解碼 ANSI-C 逸出，實測 `g=git; $'\x24g commit --no-verify'` 放行。
 - `declare -n` 名稱參照：`g=git; declare -n r=g; $r commit --no-verify` 放行，未解析 nameref。
@@ -951,3 +951,24 @@ Opus 審查判定 fix-first：F1–F5 的原始輸入都擋、無誤擋、測試
 **已知限制補充**：見 2026-11-12 條目的已知限制段（已依實測更新）。其中 `bash -c "$g …"` 是實際放行的繞過，已明記。
 
 **驗證**（HOME/USERPROFILE 指向暫存目錄）：`block-no-verify-shell-state` 7/7、`block-no-verify-config-rename` 8/8、`block-no-verify-review-fix` 21/21、`block-no-verify-bypass-review` 28/28、`block-no-verify` 819/819、`cursor-fail-closed` 29/29、`cursor-hook-dispatchers` 27/27、`cursor-hooks-ownership` 6/6、`install-cursor-hooks-merge` 11/11、`cursor-hooks-legacy-ledger` 3/3、`cursor-hooks-records` 2/2。
+
+## 2026-11-13：分支合流與狀態合併（第四輪，7e0ca207）
+
+問題：每個條件式賦值都讓狀態數加倍（2 的 n 次方）。8 個條件賦值加上一般指令就耗盡分析預算而 exit 2，而 0c2c999d 放行。
+
+修法：
+- 分支在指令結束時合併成單一狀態。合併後的變數記下所有可能值（含「未設定」）；每個讀取點（指令字、環境變數、前綴賦值）對每個可能值都檢查，任一個觸發即擋。
+- 變數的可能值超過 8 個時，不合併，維持原分支（仍受同一預算限制，fail closed）。
+- readonly 只在部分分支成立時，該變數標為 sticky：之後的賦值是加入既有值，而不是取代，因此 readonly 分支保留原值、另一分支取得新值，兩者都被檢查。
+- 單一指令的變數組合上限 64；超過即 fail closed（「too branched」）。
+- 同一指令的狀態變化只計算一次，不因環境變數組合重複計算。
+
+測試：`tests/hooks/block-no-verify-branch-merge.test.js`（10 項）。8 個與 30 個條件式賦值加指令都放行且快；`if c; then g=git; else g=echo; fi; $g commit --no-verify` 擋；`if c; then export HUSKY=0; fi; git commit -m x` 擋；sticky readonly 的兩種寫法擋。
+
+既有 pin 的修改：`tests/hooks/block-no-verify.test.js` 原有「conditional environment alternatives charge copies within a shared quota at 8/12」，斷言 8 與 12 個同值條件賦值加 `git status` 必須因預算耗盡 exit 2。那正是此處要消除的誤擋，因此改為斷言 exit 0 且 spent 小於 3000，保留「複製計入配額且有界」的斷言（copiedStateEntries 不超過 spent 加 128）。
+
+差分驗證（隨機產生 16,555 條分支與覆寫指令，同一組指令）：
+- 相對 0c2c999d：新增放行 0 條。
+- 相對 7e0ca207：新增擋下 23 條。其中 18 條是條件式 `HUSKY=0` 之後的 git 提交（正確），5 條是「too branched」（fail closed）。
+
+已知限制（非本輪引入，main 上同樣放行）：未知的執行檔，例如 `u=$(x); $u commit --no-verify`，hook 不解析、放行。這是既有政策缺口，未在本輪改動。
