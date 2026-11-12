@@ -67,7 +67,11 @@ const {
   mergeMcpConfig,
   withPreservedUserMcpServers,
 } = require('./mcp-user-servers');
-const { isCursorHooksOperation, mergeCursorHooksConfig } = require('./cursor-hooks-merge');
+const {
+  isCursorHooksOperation,
+  mergeCursorHooksConfig,
+  withCursorHookRecords,
+} = require('./cursor-hooks-merge');
 
 function isMarkdownPath(filePath) {
   return /\.(md|mdx|markdown)$/i.test(String(filePath || ''));
@@ -750,9 +754,9 @@ function preflightQwenAgentOperations(plan) {
 }
 
 function previewInstallPlan(rawPlan) {
-  const plan = withPreservedUserMcpServers(
+  const plan = withCursorHookRecords(withPreservedUserMcpServers(
     withMcpMergeExclusions(rawPlan, parseDisabledMcpServers(process.env.ECC_DISABLED_MCPS))
-  );
+  ));
   preflightQwenAgentOperations(plan);
   assertOpenCodeScriptBoundary(plan);
   assertOpenCodeHookDeactivationReady(plan);
@@ -817,7 +821,7 @@ function applyInstallPlan(plan, dependencies = {}) {
 
 function applyInstallPlanLocked(rawPlan, dependencies = {}, settingsLockHeld = false) {
   const disabledServers = parseDisabledMcpServers(process.env.ECC_DISABLED_MCPS);
-  const plan = withPreservedUserMcpServers(withMcpMergeExclusions(rawPlan, disabledServers));
+  const plan = withCursorHookRecords(withPreservedUserMcpServers(withMcpMergeExclusions(rawPlan, disabledServers)));
   preflightQwenAgentOperations(plan);
   const persistInstallState = dependencies.writeInstallState || writeInstallState;
   const beforeInstallStateRead = dependencies.beforeInstallStateRead;

@@ -39,10 +39,11 @@ const {
 } = require('./install/claude-settings');
 const { transformInstallContent } = require('./install/content-transform');
 const {
-  collectEccCommands,
   isCursorHooksOperation,
   mergeCursorHooksConfig,
+  recordedEccEntries,
   stripEccHooksConfig,
+  withCursorHookRecords,
 } = require('./install/cursor-hooks-merge');
 const { buildInstallIndex, rewriteRelativeLinks } = require('./install/link-rewrite');
 const { getInstallTargetAdapter, listInstallTargetAdapters } = require('./install-targets/registry');
@@ -531,27 +532,9 @@ function retainDriftedCopy(operation, trustedRoot) {
   return null;
 }
 
-// A source that does not parse is ignored; the ledger records still apply.
-function collectEccCommandsSafely(sourceText, managedOperations) {
-  try {
-    return collectEccCommands(sourceText, managedOperations);
-  } catch (_error) {
-    return collectEccCommands(null, managedOperations);
-  }
-}
-
-// ECC's own hooks.json from the repository, when it can be read: lets uninstall
-// recognise ECC entries even if the ledger lost the .cursor/hooks/ records.
-function readCursorHooksSource(repoRoot, operation) {
-  try {
-    const sourcePath = resolveOperationSourcePath(repoRoot, operation);
-    return sourcePath ? fs.readFileSync(sourcePath, 'utf8') : null;
-  } catch (_error) {
-    return null;
-  }
-}
-
-function uninstallCursorHooks(operation, trustedRoot, managedOperations, repoRoot) {
+// Only the entries the ledger records as ECC's are removed. A ledger from before
+// per-entry records keeps all entries, because nothing shows they are ECC's.
+function uninstallCursorHooks(operation, trustedRoot, managedOperations) {
   const existingDestination = getContainedExistingPath(
     operation.destinationPath,
     trustedRoot,
@@ -563,7 +546,7 @@ function uninstallCursorHooks(operation, trustedRoot, managedOperations, repoRoo
   try {
     stripped = stripEccHooksConfig(
       readFileNoFollow(getManagedDestination(existingDestination, trustedRoot, 'uninstall').managedPath, 'utf8'),
-      collectEccCommandsSafely(readCursorHooksSource(repoRoot, operation), managedOperations)
+      recordedEccEntries(managedOperations)
     );
   } catch (_error) {
     // Not a hooks config ECC can interpret: leave the user's file alone.
@@ -577,7 +560,7 @@ function uninstallCursorHooks(operation, trustedRoot, managedOperations, repoRoo
 
 function uninstallCopyFile(operation, trustedRoot, options) {
   if (isCursorHooksOperation(operation)) {
-    return uninstallCursorHooks(operation, trustedRoot, options.managedOperations || [], options.repoRoot);
+    return uninstallCursorHooks(operation, trustedRoot, options.managedOperations || []);
   }
   if (options.preserveDriftedCopies) {
     const retained = retainDriftedCopy(operation, trustedRoot);
@@ -1393,21 +1376,24 @@ function createRepairPlanFromRecord(record, context, options = {}) {
       operations,
       statePreview
     };
+    const plan = withCursorHookRecords(recordedPlan, getManagedOperations(state));
     return record.adapter.target === 'opencode'
-      ? withHookConsent(recordedPlan, getRecordedHookConsent(state))
-      : recordedPlan;
+      ? withHookConsent(plan, getRecordedHookConsent(state))
+      : plan;
   }
 
   const desiredPlan = resolveRecordedManifestPlan(record, context, options);
 
-  return {
+  // The repair rewrites the ledger from this plan, so the hooks.json records
+  // must be carried into it; otherwise a later uninstall loses ownership.
+  return withCursorHookRecords({
     ...desiredPlan,
     statePreview: {
       ...desiredPlan.statePreview,
       installedAt: state.installedAt,
       lastValidatedAt: new Date().toISOString()
     }
-  };
+  }, getManagedOperations(state));
 }
 
 function buildAdapterDerivedStatePreview(statePreview, record) {

@@ -9,18 +9,21 @@
  * the user had added since the last install, and uninstall deleted the file
  * together with them.
  *
- * An entry is ECC's only when its `command` is exactly one ECC knows it wrote:
- *  - a command in ECC's own `.cursor/hooks.json` source, or
- *  - `node .cursor/hooks/<file>` for a file the install-state ledger records as
- *    ECC-installed under `.cursor/hooks/` (this covers entries written by older
- *    ECC versions whose scripts are no longer in the source).
- * A user's own `node .cursor/hooks/my-script.js` is therefore never touched,
- * even though it lives next to ECC's scripts.
+ * Ownership is per entry, not per command string. The install-state ledger
+ * records, on the hooks.json operation, the exact `{ event, entry }` pairs ECC
+ * wrote (`eccEntries`). Reinstall and uninstall remove an existing entry only
+ * when it matches a recorded pair in full (same event and identical content),
+ * one occurrence per record. A user entry that shares a command with ECC's but
+ * sits under another event or has other fields is therefore kept.
+ *
+ * A ledger written before this rule has no `eccEntries`. Nothing proves that an
+ * entry there is ECC's, so those entries are kept rather than guessed at.
  *
  * Cursor runs every matching hook from a hooks.json and merges the responses
  * (any deny wins), so ECC's entries go first and the user's follow them.
  */
 
+const fs = require('fs');
 const path = require('path');
 
 function isPlainObject(value) {
@@ -55,36 +58,74 @@ function formatJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-const ECC_HOOKS_DIR_FILE = /(?:^|\/)\.cursor\/hooks\/(.+)$/;
+// Key-sorted serialization, so two entries compare by content and not by the
+// order their keys happened to be written in.
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (isPlainObject(value)) {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
 
 /**
- * Commands ECC owns: those in its source hooks.json plus the scripts the ledger
- * says ECC installed under `.cursor/hooks/`.
+ * The `{ event, entry }` pairs ECC's source hooks.json defines. These are what
+ * an install inserts, so the install records them in the ledger.
  *
- * @param {string|null} sourceText ECC's `.cursor/hooks.json` (null when unavailable, e.g. uninstall).
- * @param {object[]} managedOperations Recorded managed install-state operations.
- * @returns {Set<string>}
+ * @param {string} sourceText ECC's `.cursor/hooks.json`.
+ * @returns {{ event: string, entry: object }[]}
  */
-function collectEccCommands(sourceText, managedOperations = []) {
-  const commands = new Set();
-  if (sourceText !== null && sourceText !== undefined) {
-    const source = parseHooksConfig(sourceText, 'ECC .cursor/hooks.json');
-    for (const entries of Object.values(source.hooks || {})) {
-      for (const entry of Array.isArray(entries) ? entries : []) {
-        if (isPlainObject(entry) && typeof entry.command === 'string') commands.add(entry.command);
+function listEccHookRecords(sourceText) {
+  const source = parseHooksConfig(sourceText, 'ECC .cursor/hooks.json');
+  const records = [];
+  for (const [event, entries] of Object.entries(source.hooks || {})) {
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (isPlainObject(entry)) records.push({ event, entry: JSON.parse(JSON.stringify(entry)) });
+    }
+  }
+  return records;
+}
+
+/**
+ * The records the ledger holds for the hooks.json operation. A ledger entry
+ * without `eccEntries` contributes nothing, so its entries are retained.
+ *
+ * @param {object[]} managedOperations Recorded managed install-state operations.
+ * @returns {{ event: string, entry: object }[]}
+ */
+function recordedEccEntries(managedOperations = []) {
+  const records = [];
+  for (const operation of managedOperations) {
+    if (!isCursorHooksOperation(operation) || !Array.isArray(operation.eccEntries)) continue;
+    for (const record of operation.eccEntries) {
+      if (isPlainObject(record) && typeof record.event === 'string' && isPlainObject(record.entry)) {
+        records.push({ event: record.event, entry: record.entry });
       }
     }
   }
-  for (const operation of managedOperations) {
-    if (!operation || operation.kind !== 'copy-file' || typeof operation.destinationPath !== 'string') continue;
-    const match = ECC_HOOKS_DIR_FILE.exec(operation.destinationPath.replace(/\\/g, '/'));
-    if (match) commands.add(`node .cursor/hooks/${match[1]}`);
-  }
-  return commands;
+  return records;
 }
 
-function isEccHookEntry(entry, eccCommands) {
-  return isPlainObject(entry) && typeof entry.command === 'string' && eccCommands.has(entry.command);
+function recordsForEvent(records, event) {
+  return records.filter(record => record.event === event);
+}
+
+/**
+ * Take out one existing entry per record that matches it in full. Entries that
+ * no record claims are returned in their original order.
+ */
+function claimRecordedEntries(entries, records) {
+  const remaining = [...entries];
+  let removed = 0;
+  for (const record of records) {
+    const wanted = canonicalJson(record.entry);
+    const index = remaining.findIndex(entry => canonicalJson(entry) === wanted);
+    if (index === -1) continue;
+    remaining.splice(index, 1);
+    removed++;
+  }
+  return { remaining, removed };
 }
 
 /**
@@ -98,7 +139,7 @@ function mergeCursorHooksConfig(existingText, sourceText, managedOperations = []
     return formatJson(source);
   }
   const existing = parseHooksConfig(existingText, 'existing hooks.json');
-  const eccCommands = collectEccCommands(sourceText, managedOperations);
+  const records = recordedEccEntries(managedOperations);
 
   const mergedHooks = {};
   const events = new Set([
@@ -109,7 +150,7 @@ function mergeCursorHooksConfig(existingText, sourceText, managedOperations = []
     const sourceEntries = Array.isArray(source.hooks && source.hooks[event]) ? source.hooks[event] : [];
     const existingEntries = existing.hooks && existing.hooks[event];
     const userEntries = Array.isArray(existingEntries)
-      ? existingEntries.filter(entry => !isEccHookEntry(entry, eccCommands))
+      ? claimRecordedEntries(existingEntries, recordsForEvent(records, event)).remaining
       : [];
     const combined = [...sourceEntries, ...userEntries];
     if (combined.length > 0) mergedHooks[event] = combined;
@@ -123,13 +164,15 @@ function mergeCursorHooksConfig(existingText, sourceText, managedOperations = []
 }
 
 /**
- * Uninstall: drop ECC's entries and keep the user's.
+ * Uninstall: drop the entries the ledger records as ECC's and keep the rest.
  *
+ * @param {string} existingText The current hooks.json text.
+ * @param {{ event: string, entry: object }[]} records From recordedEccEntries().
  * @returns {{ changed: boolean, text: string|null }} `text` is what to write
  *   back, or null when the file held nothing but ECC's entries and can go.
  *   When no ECC entry was found the file is returned untouched.
  */
-function stripEccHooksConfig(existingText, eccCommands) {
+function stripEccHooksConfig(existingText, records = []) {
   const existing = parseHooksConfig(existingText, 'existing hooks.json');
   let removed = 0;
   const hooks = {};
@@ -138,9 +181,9 @@ function stripEccHooksConfig(existingText, eccCommands) {
       hooks[event] = entries;
       continue;
     }
-    const kept = entries.filter(entry => !isEccHookEntry(entry, eccCommands));
-    removed += entries.length - kept.length;
-    if (kept.length > 0) hooks[event] = kept;
+    const claim = claimRecordedEntries(entries, recordsForEvent(records, event));
+    removed += claim.removed;
+    if (claim.remaining.length > 0) hooks[event] = claim.remaining;
     else if (entries.length === 0) hooks[event] = entries; // the user's empty list, not ours
   }
   if (removed === 0) return { changed: false, text: existingText };
@@ -159,10 +202,47 @@ function stripEccHooksConfig(existingText, eccCommands) {
   };
 }
 
+/**
+ * Attach `eccEntries` to the hooks.json operation of a plan, in both the writes
+ * and the ledger preview. The records come from ECC's source when it can be
+ * read; otherwise from the ledger operation already recorded for the same
+ * destination, so a repair that cannot read the source keeps them.
+ *
+ * @param {object} plan An install plan with `operations` and `statePreview`.
+ * @param {object[]} [recordedOperations] Managed operations from the ledger.
+ */
+function withCursorHookRecords(plan, recordedOperations = []) {
+  const known = new Map();
+  for (const operation of recordedOperations) {
+    if (isCursorHooksOperation(operation) && Array.isArray(operation.eccEntries)) {
+      known.set(operation.destinationPath, operation.eccEntries);
+    }
+  }
+  for (const operation of plan.operations) {
+    if (!isCursorHooksOperation(operation) || typeof operation.sourcePath !== 'string') continue;
+    known.set(operation.destinationPath, listEccHookRecords(fs.readFileSync(operation.sourcePath, 'utf8')));
+  }
+  if (known.size === 0) return plan;
+  const attach = operation => (
+    isCursorHooksOperation(operation) && known.has(operation.destinationPath)
+      ? { ...operation, eccEntries: known.get(operation.destinationPath) }
+      : operation
+  );
+  return {
+    ...plan,
+    operations: plan.operations.map(attach),
+    statePreview: {
+      ...plan.statePreview,
+      operations: plan.statePreview.operations.map(attach),
+    },
+  };
+}
+
 module.exports = {
-  collectEccCommands,
   isCursorHooksOperation,
-  isEccHookEntry,
+  listEccHookRecords,
   mergeCursorHooksConfig,
+  recordedEccEntries,
   stripEccHooksConfig,
+  withCursorHookRecords,
 };

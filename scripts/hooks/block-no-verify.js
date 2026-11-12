@@ -263,12 +263,100 @@ function findGitBypassFlag(words, budget, start, command) {
   return false;
 }
 
-function checkGitWords(words, budget, start = 0, environmentOverride = false) {
-  const { index, override } = scanGitGlobalOptions(words, budget, start, environmentOverride);
+const MAX_GIT_ALIAS_DEPTH = 8;
+const GIT_CONFIG_VALUE_OPTIONS = new Set(['-f', '--file', '--blob', '--type', '--default', '--comment']);
+const GIT_CONFIG_WRITE_FLAGS = new Set(['--unset', '--unset-all', '--add', '--replace-all', '--remove-section', '--rename-section']);
+const NO_GIT_FLAGS = Object.freeze({ redirects: false, skipsHooks: false });
+
+// HUSKY=0 turns Husky hooks off; SKIP names pre-commit framework hooks to skip.
+// Only literal values visible in this command's own environment count.
+function hookSkipEnvironment(environment) {
+  const husky = environment.get('HUSKY');
+  if (husky === '0' || husky === 'false') return true;
+  const skip = environment.get('SKIP');
+  return typeof skip === 'string' && skip.length > 0;
+}
+
+function gitEnvironmentFlags(environment, budget) {
+  return {
+    redirects: gitEnvironmentOverride(environment, budget),
+    skipsHooks: hookSkipEnvironment(environment),
+  };
+}
+
+// The last `-c alias.<name>=<value>` before the subcommand wins, as in git.
+// Aliases supplied only through GIT_CONFIG_* variables are not resolved.
+function gitAliasDefinition(words, budget, start, index, name) {
+  let definition = null;
+  for (let j = start + 1; j < index; j++) {
+    budget.spend();
+    const value = words[j].value;
+    let setting = null;
+    if (value === '-c') { setting = words[j + 1]?.value ?? ''; j++; }
+    else if (value.startsWith('-c')) setting = value.slice(2);
+    if (setting === null) continue;
+    const eq = setting.indexOf('=');
+    const key = eq < 0 ? setting : setting.slice(0, eq);
+    if (key.slice(0, 6).toLowerCase() === 'alias.' && key.slice(6) === name) {
+      definition = eq < 0 ? 'true' : setting.slice(eq + 1);
+    }
+  }
+  return definition;
+}
+
+// An unprotected subcommand may be an inline alias that expands to a
+// protected one. Shell aliases (! prefix) are checked as shell source; word
+// aliases are re-checked with the expansion in place of the alias name.
+function checkGitAlias(words, budget, start, index, flags, depth) {
+  const name = words[index].value;
+  const definition = gitAliasDefinition(words, budget, start, index, name);
+  if (definition === null) return null;
+  if (depth >= MAX_GIT_ALIAS_DEPTH) {
+    return 'BLOCKED: git alias chain is too deep to verify. Git hooks must not be bypassed.';
+  }
+  if (definition.startsWith('!')) {
+    const nested = checkCommand(definition.slice(1));
+    return nested.blocked ? nested.reason : null;
+  }
+  budget.spend(definition.length + 1);
+  const expansion = scanShell(definition, budget).commands[0]?.words ?? [];
+  const expanded = [...words.slice(start, index), ...expansion, ...words.slice(index + 1)];
+  return checkGitWords(expanded, budget, 0, flags, depth + 1);
+}
+
+// git config that writes core.hooksPath or an include path changes hook
+// resolution or pulls in other configuration for later commands. Reads pass.
+function checkGitConfigWrite(words, budget, start) {
+  const operands = [];
+  let write = false;
+  for (let index = start; index < words.length; index++) {
+    const value = words[index].value;
+    budget.spend(value.length + 1);
+    if (value === '--') { operands.push(...words.slice(index + 1).map(word => word.value)); break; }
+    if (GIT_CONFIG_WRITE_FLAGS.has(value)) { write = true; continue; }
+    if (GIT_CONFIG_VALUE_OPTIONS.has(value)) { index++; continue; }
+    if (value.startsWith('-')) continue;
+    operands.push(value);
+  }
+  const [key, value] = operands;
+  if (key === undefined) return null;
+  if (value !== undefined) write = true;
+  if (!write || !isHookRedirectConfigKey(key)) return null;
+  return `BLOCKED: git config would change ${key}, which redirects or extends git hooks. Git hooks must not be bypassed.`;
+}
+
+function checkGitWords(words, budget, start = 0, flags = NO_GIT_FLAGS, depth = 0) {
+  const { index, override } = scanGitGlobalOptions(words, budget, start, flags.redirects);
   const command = words[index]?.value;
   budget.spend((command?.length || 0) + 1);
-  if (!PROTECTED_GIT_COMMANDS.has(command)) return null;
+  if (command === 'config') return checkGitConfigWrite(words, budget, index + 1);
+  if (!PROTECTED_GIT_COMMANDS.has(command)) {
+    return command === undefined ? null : checkGitAlias(words, budget, start, index, flags, depth);
+  }
   if (override) return `BLOCKED: Overriding core.hooksPath is not allowed with git ${command}. Git hooks must not be bypassed.`;
+  if (flags.skipsHooks) {
+    return `BLOCKED: HUSKY or SKIP is set to skip hooks for git ${command}. Git hooks must not be bypassed.`;
+  }
   if (findGitBypassFlag(words, budget, index + 1, command)) {
     return `BLOCKED: --no-verify flag is not allowed with git ${command}. Git hooks must not be bypassed.`;
   }
@@ -311,7 +399,10 @@ const ENV_FLAG_OPTIONS = new Set(['-i', '--ignore-environment', '-0', '--null'])
 const SUDO_VALUE_OPTIONS = new Set(['-u', '--user', '-g', '--group', '-h', '--host', '-p', '--prompt', '-C', '-T', '-R', '-D']);
 const SUDO_FLAG_OPTIONS = new Set(['-n', '-E', '-H', '-S', '-k', '-K', '-b']);
 const SHELL_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
-const GIT_ENV_NAME = /^GIT_CONFIG_(?:COUNT|PARAMETERS|(?:KEY|VALUE)_[0-9]+)$/;
+// Shell variable names whose literal values shell-state tracking keeps. All
+// identifiers are tracked so that `g=git; $g commit` can be read; values that
+// are dynamic are kept as unknown, never guessed.
+const TRACKED_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function isEnvSplitFlag(flag) {
   return flag === '-S' || flag === '--split-string'
@@ -356,7 +447,7 @@ function executableWords(words, budget, inherited = new Map(), callerValues = in
     const equals = value.indexOf('=');
     const append = !environmentAssignments && value[equals - 1] === '+';
     const key = value.slice(0, append ? equals - 1 : equals);
-    if (GIT_ENV_NAME.test(key)) {
+    if (TRACKED_ENV_NAME.test(key)) {
       const operand = value.slice(equals + 1);
       const count = environments.length;
       budget.spend(count + 1);
@@ -919,7 +1010,7 @@ function updateShellState(state, normalized, budget) {
     const equals = value.indexOf('=');
     const append = equals > 0 && value[equals - 1] === '+';
     const key = equals < 0 ? value : value.slice(0, append ? equals - 1 : equals);
-    if (!GIT_ENV_NAME.test(key)) continue;
+    if (!TRACKED_ENV_NAME.test(key)) continue;
     changed = true;
     if (name !== 'unset' && equals >= 0) assign(key, value.slice(equals + 1), words[i].dynamic, append);
     budget.spend(states.length + 1);
@@ -984,7 +1075,72 @@ function applyDeclaration(current, key, equals, declaration) {
   if (readonly || uncertain) current.readonly.add(key);
 }
 
+// A whole-word reference ($name, ${name}, or "$name") to a variable whose
+// literal value shell-state tracking holds is replaced by that value, so
+// `g=git; $g commit` is read as git. Unknown or partial references stay
+// dynamic and are not guessed.
+function expandKnownWords(words, variables, budget) {
+  if (!variables.size) return words;
+  return words.map(word => {
+    budget.spend(1);
+    if (!word.dynamic) return word;
+    const match = /^\$(\w+)$|^\$\{(\w+)\}$/.exec(word.value);
+    const name = match ? (match[1] ?? match[2]) : undefined;
+    if (name === undefined || typeof variables.get(name) !== 'string') return word;
+    return { ...word, value: variables.get(name), dynamic: false, literal: true };
+  });
+}
+
+function shellQuote(value) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+// Rewrite the PowerShell escape and variable forms this guard cannot read
+// as shell: backtick escapes are removed, constant $name='...' assignments
+// are folded into their uses, and $env:NAME='...' becomes an export. Only
+// assignments visible in the same text are used; nothing is executed.
+function powershellNormalize(text) {
+  if (!text.includes('`') && !text.includes('$')) return text;
+  let unescaped = '';
+  let inSingle = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "'") inSingle = !inSingle;
+    if (!inSingle && ch === '`' && i + 1 < text.length) {
+      i++;
+      if (text[i] !== '\n' && text[i] !== '\r') unescaped += text[i];
+      continue;
+    }
+    unescaped += ch;
+  }
+  const value = '(?:\'([^\']*)\'|"([^"$`]*)"|([A-Za-z0-9_./:-]+))';
+  const constants = new Map();
+  let normalized = unescaped.replace(new RegExp(`\\$env:(\\w+)\\s*=\\s*${value}`, 'gi'), (match, name, s, d, bare) => (
+    `export ${name}=${shellQuote(s ?? d ?? bare)}`
+  ));
+  normalized = normalized.replace(new RegExp(`\\$(\\w+)\\s*=\\s*${value}`, 'g'), (match, name, s, d, bare) => {
+    constants.set(name.toLowerCase(), s ?? d ?? bare);
+    return '';
+  });
+  normalized = normalized.replace(/&\s*\$(\w+)(?![\w:])/g, (match, name) => (
+    constants.has(name.toLowerCase()) ? shellQuote(constants.get(name.toLowerCase())) : match
+  ));
+  normalized = normalized.replace(/\$(\w+)(?![\w:])/g, (match, name) => (
+    constants.has(name.toLowerCase()) ? shellQuote(constants.get(name.toLowerCase())) : match
+  ));
+  return normalized;
+}
+
+// The text is checked as scanned shell and again as PowerShell read through
+// powershellNormalize, so a bypass visible under either reading is denied.
 function checkCommand(input) {
+  const direct = checkShellText(input);
+  if (direct.blocked) return direct;
+  const normalized = powershellNormalize(input);
+  return normalized === input ? direct : checkShellText(normalized);
+}
+
+function checkShellText(input) {
   const budget = createBudget(input.length);
   const pending = [{ text: input, opaque: false, context: { states: [shellState(new Map(), budget)] } }];
   function enqueue(text, opaque = false, context = { states: [shellState(new Map(), budget)] }) {
@@ -997,7 +1153,7 @@ function checkCommand(input) {
       const word = words[index];
       budget.spend(word.value.length + 1);
       if (isGitExecutable(word.value)) {
-        const reason = checkGitWords(words, budget, index, gitEnvironmentOverride(environment, budget));
+        const reason = checkGitWords(words, budget, index, gitEnvironmentFlags(environment, budget));
         if (reason) return reason;
       }
       if (word.value !== text && /git/i.test(word.value) && /[\s'"()]/.test(word.value)) enqueue(word.value, true, { states: [shellState(environment, budget)] });
@@ -1058,7 +1214,7 @@ function checkCommand(input) {
     const { words } = normalized;
     const reason = task.opaque || role.kind === 'opaque'
       ? inspectOpaque(command.words, task.text, environment)
-      : role.kind === 'git' ? checkGitWords(words, budget, 0, gitEnvironmentOverride(environment, budget)) : null;
+      : role.kind === 'git' ? checkGitWords(words, budget, 0, gitEnvironmentFlags(environment, budget)) : null;
     if (reason) return reason;
     if (role.code) {
       if (normalized.local && words[0]?.value === 'eval') frame.sameShellCode = role.code;
@@ -1080,7 +1236,7 @@ function checkCommand(input) {
   // environment.
   function inspectState(frame, state) {
     const { command, conditional } = frame;
-    const normalized = executableWords(command.words, budget, exportedEnvironment(state, budget), state.variables);
+    const normalized = executableWords(expandKnownWords(command.words, state.variables, budget), budget, exportedEnvironment(state, budget), state.variables);
     const { words, environments } = normalized;
     const next = copyShellState(state, budget);
     const evalPrefix = normalized.local && words[0]?.value === 'eval' && normalized.prefixAssignments.size > 0;

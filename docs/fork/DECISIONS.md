@@ -874,3 +874,34 @@ main CI（run 43077452803，commit 989a6bfa）紅了三處，原因都在本輪�
 **驗證**：修前截斷且只剩 dev-server 的測試紅（exit 2）；修後 `tests/hooks/cursor-fail-closed.test.js` 29 項全綠。另以真實讀取失敗（stdin 指向目錄，EISDIR）手動驗證：只剩 dev-server 時 exit 0，只剩 block-no-verify 時 exit 2。
 
 **範圍**：只動 `.cursor/hooks` 路徑與其測試，Claude Code 路徑與上游持有的其他檔未動。
+
+## 2026-11-12：F1–F5 覆核修正（Codex 限定範圍唯讀覆核，第二批）
+
+Codex 唯讀覆核確認 5 項問題：`block-no-verify` 的字面旗標防護有效，但可經 Git alias、PowerShell 語法、環境變數與持久化設定繞過；Cursor 解除安裝以 `command` 字串當所有權，會誤刪使用者與 ECC 同 command 的條目，甚至整份 hooks.json。以下逐項記錄修法。
+
+**F1（高）行內 Git alias 繞過**：`git -c alias.ci='commit --no-verify' ci -m x` 原本放行。修法：未受保護的子命令若在同一命令中有 `-c alias.<name>=...` 定義（最後一個為準），展開後重新檢查；shell alias（`!` 開頭）當作 shell 原文檢查；展開深度上限 8，超過即擋。
+
+**F2（高）PowerShell 反引號與變數**：`git commit --no-ver` 後接反引號再接 `ify`，PowerShell 會還原成 `--no-verify`，原本放行。修法：同一輸入同時以 shell 與 PowerShell 兩種讀法檢查。PowerShell 讀法移除反引號跳脫、摺疊同一文字內的常數 `$name='...'`、把 `$env:NAME='...'` 轉成 export。這是啟發式轉譯，不是完整 parser，且不執行任何命令。
+
+**F3（中）HUSKY／SKIP 環境變數**：`HUSKY=0` 或 `HUSKY=false`、以及非空的 `SKIP=...`，在該命令自己的環境中出現時（inline、`env`、`export`、`$env:` 皆然），擋下受保護的 git 操作。只看字面值；下游框架是否遵循這些變數，本修法不驗證。
+
+**F4（中）持久化 hooks 路徑與 include 寫入**：`git config core.hooksPath ...`、`git config include.path ...`、`git config includeIf.<cond>.path ...` 這類寫入會被擋（讀取放行）。Husky、pre-commit 框架等在程式內呼叫 `git config` 的情況不經這個 shell 檢查，不受影響。若真的需要改 hooksPath，請使用者自己在終端機執行。
+
+**F5（中）Cursor hooks.json 解除安裝誤刪**：所有權改為逐條目判定。安裝時把 ECC 寫入的 `{ event, entry }` 組記入 ledger 的 hooks.json 操作（`eccEntries`）；重裝與解除安裝只移除與記錄「event 相同且內容完全相同」的條目，每筆記錄只消耗一次。同 command 但 event 或欄位不同的使用者條目保留。遷移行為：舊 ledger 沒有 `eccEntries` 時保留全部條目（沒有證據證明它們是 ECC 的，寧可保留）。因此升級後第一次重裝會再插入一份 ECC 條目，之後才由 ledger 追蹤。修補過程另外確認：修復（repair）流程重寫 ledger 時會帶回 hooks.json 記錄，避免之後解除安裝失去所有權資料。
+
+**未改動**：`tests/lib/install-cursor-hooks-merge.test.js` 未修改，也沒有釘住舊語意；它在本批修改後仍綠（11/11）。
+
+**已知限制（未修，列為邊界）**：
+
+- `alias g=git` 這類 shell alias 不追蹤；`GIT_CONFIG_*` 環境變數定義的 alias 不解析。
+- 與 Git 內建同名的 alias 保守擋下。
+- 變數間接引用只對字面值已知的整字詞展開；部分引用與動態值一律視為未知，不猜。
+- PowerShell 讀法是啟發式轉譯，不是完整 parser；無法判定的寫法可能漏網。
+- 解除安裝對「只有精確相同、又無安裝來源證明」的重複條目，採保留優先。
+
+**驗證**（工作樹，HOME/USERPROFILE 指向暫存目錄）：
+
+- 本批新增與既有相關測試：`block-no-verify-bypass-review` 綠、`cursor-hooks-ownership` 綠、`install-cursor-hooks-merge` 綠。
+- run-all 中 `profile-selection` 之後的 47 個檔逐一單獨執行，全數 exit 0。
+- 前段曾紅的 `npm-publish-surface`、`orchestrate-codex-worker` 在工作樹與 HEAD 皆可單獨通過；第一次紅是與 HEAD worktree 建立同時執行造成的競爭（ETIMEDOUT、EPERM），重跑即綠。
+- `npx markdownlint '**/*.md'`（排除 node_modules 與 tmp）無輸出、exit 0；eslint 改動檔 0 error，僅既有的 `apply.js` 兩個 complexity 警告（HEAD 同樣存在）。
