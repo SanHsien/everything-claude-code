@@ -972,3 +972,5 @@ Opus 審查判定 fix-first：F1–F5 的原始輸入都擋、無誤擋、測試
 - 相對 7e0ca207：新增擋下 23 條。其中 18 條是條件式 `HUSKY=0` 之後的 git 提交（正確），5 條是「too branched」（fail closed）。
 
 已知限制（非本輪引入，main 上同樣放行）：未知的執行檔，例如 `u=$(x); $u commit --no-verify`，hook 不解析、放行。這是既有政策缺口，未在本輪改動。
+
+已知限制（非本輪引入，main 上同樣放行，最終複審實測）：賦值的值引用變數時不解析，例如 `h=0; HUSKY=$h git commit`、`export HUSKY=$h`、`GIT_CONFIG_KEY_0=$k`、`HUSKY=$(echo 0) git commit` 都放行。分支合併的「逐值檢查」涵蓋的是分支 export 帶進環境的值，不含這種寫法。另 `a=--no; git commit $a-verify` 這類拼接也放行，屬「拼接不猜」範圍。
