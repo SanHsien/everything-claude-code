@@ -981,4 +981,3 @@ Opus 審查判定 fix-first：F1–F5 的原始輸入都擋、無誤擋、測試
 |---:|---|---|---|
 | 224 | `js/file-system-race` `scripts/lib/install/apply.js`（Cursor hooks 合併） | 產品碼的真實「檢查後使用」：先 `fs.existsSync(destination)` 再 `readFileSync`，兩者之間檔案可被換掉或刪除，合併的輸入與判斷依據不是同一份。實際影響低（使用者自己的設定目錄），但寫法可直接消除 | 修：改為單次 `readFileSync`，只有 `ENOENT` 視為「不存在」而走一般複製；其他錯誤（`EISDIR`、`EACCES`）照舊拋出，不改既有「無法解析就丟錯、不覆寫」的行為 |
 | 223 | `js/insecure-temporary-file` `tests/hooks/format-windows-paths.test.js:137` | 測試 fixture 重現 `stop-format-typecheck` 讀取的累積檔名（`os.tmpdir()/ecc-edited-<session>.txt`），檔名由 hook 決定，測試必須用同一路徑 | 不改；比照 #215 以 used in tests 關閉 |
-
