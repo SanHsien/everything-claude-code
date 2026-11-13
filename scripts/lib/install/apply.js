@@ -73,6 +73,16 @@ const {
   withCursorHookRecords,
 } = require('./cursor-hooks-merge');
 
+/** Returns the file's text, or null when it does not exist. Other errors propagate. */
+function readExistingText(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 function isMarkdownPath(filePath) {
   return /\.(md|mdx|markdown)$/i.test(String(filePath || ''));
 }
@@ -959,11 +969,16 @@ function applyInstallPlanLocked(rawPlan, dependencies = {}, settingsLockHeld = f
         continue;
       }
 
-      if (isCursorHooksOperation(operation) && fs.existsSync(operation.destinationPath)) {
+      const existingCursorHooks = isCursorHooksOperation(operation)
+        ? readExistingText(operation.destinationPath)
+        : null;
+      if (existingCursorHooks !== null) {
         // Shared config: refresh ECC's entries, keep whatever the user added.
         // An unparsable existing file throws instead of being overwritten.
+        // Read once instead of exists-then-read so the merge input is the
+        // file as it was actually read (no check/use window).
         const merged = mergeCursorHooksConfig(
-          fs.readFileSync(operation.destinationPath, 'utf8'),
+          existingCursorHooks,
           fs.readFileSync(operation.sourcePath, 'utf8'),
           [...migration.previousManagedOperations.values()]
         );

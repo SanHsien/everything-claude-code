@@ -974,3 +974,11 @@ Opus 審查判定 fix-first：F1–F5 的原始輸入都擋、無誤擋、測試
 已知限制（非本輪引入，main 上同樣放行）：未知的執行檔，例如 `u=$(x); $u commit --no-verify`，hook 不解析、放行。這是既有政策缺口，未在本輪改動。
 
 已知限制（非本輪引入，main 上同樣放行，最終複審實測）：賦值的值引用變數時不解析，例如 `h=0; HUSKY=$h git commit`、`export HUSKY=$h`、`GIT_CONFIG_KEY_0=$k`、`HUSKY=$(echo 0) git commit` 都放行。分支合併的「逐值檢查」涵蓋的是分支 export 帶進環境的值，不含這種寫法。另 `a=--no; git commit $a-verify` 這類拼接也放行，屬「拼接不猜」範圍。
+
+## 2026-11-13：Code scanning #223、#224（Cursor guard 修補後出現）
+
+| # | 規則／位置 | 判斷 | 處置 |
+|---:|---|---|---|
+| 224 | `js/file-system-race` `scripts/lib/install/apply.js`（Cursor hooks 合併） | 產品碼的真實「檢查後使用」：先 `fs.existsSync(destination)` 再 `readFileSync`，兩者之間檔案可被換掉或刪除，合併的輸入與判斷依據不是同一份。實際影響低（使用者自己的設定目錄），但寫法可直接消除 | 修：改為單次 `readFileSync`，只有 `ENOENT` 視為「不存在」而走一般複製；其他錯誤（`EISDIR`、`EACCES`）照舊拋出，不改既有「無法解析就丟錯、不覆寫」的行為 |
+| 223 | `js/insecure-temporary-file` `tests/hooks/format-windows-paths.test.js:137` | 測試 fixture 重現 `stop-format-typecheck` 讀取的累積檔名（`os.tmpdir()/ecc-edited-<session>.txt`），檔名由 hook 決定，測試必須用同一路徑 | 不改；比照 #215 以 used in tests 關閉 |
+
