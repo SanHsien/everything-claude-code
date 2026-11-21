@@ -10,13 +10,12 @@
 
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 無 | 目前沒有可以直接動手的項目 | 無 | 無 | 無 |
+| 重評上游條件式監看項目 | 觸發條件已成立（2026-11-21 查：`python tools/check_upstream_updates.py --strict` exit 1：35 個 monitored 釘點有 30 個 head／state 已移動（另有 847 個 commit 未審））。原條件：`python tools/check_upstream_updates.py --strict` 回報 monitored head／state 移動；或維護者選定對應使用場景。#3859 已由 #3871 取代，#3867 的修正提案由 #3870 追蹤 | 依 `tools/upstream_baseline.json` 的釘點與 `docs/fork/DECISIONS.md` 的逐筆條件重審；已合併且獨立的修正才移植，先紅後綠，保留 Windows／secret redaction／EPIPE 邊界；未合併案更新有證據的監看裁決 | Codex | docs/fork/DECISIONS.md 2026-11-04、2026-11-05 與 2026-11-08 條目；tools/upstream_baseline.json monitored |
 
 ## 中期：等條件成立再做
 
 | 項目 | 觸發條件 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
-| 重評上游條件式監看項目 | `python tools/check_upstream_updates.py --strict` 回報 monitored head／state 移動；或維護者選定對應使用場景。#3859 已由 #3871 取代，#3867 的修正提案由 #3870 追蹤 | 依 `tools/upstream_baseline.json` 的釘點與 `docs/fork/DECISIONS.md` 的逐筆條件重審；已合併且獨立的修正才移植，先紅後綠，保留 Windows／secret redaction／EPIPE 邊界；未合併案更新有證據的監看裁決 | Codex | docs/fork/DECISIONS.md 2026-11-04、2026-11-05 與 2026-11-08 條目；tools/upstream_baseline.json monitored |
 | 重評 compact 視窗與其他未採用產品提案 | 實際 session 出現 CLAUDE_CODE_AUTO_COMPACT_WINDOW，或上游合併相關修正；其他提案命中既有裁決條件 | 對照實際設定與上游依據後補回歸；compact 判斷不誤用觸發值，產品測試不呼叫真實付費 CLI，採用理由可追溯 | Codex | docs/fork/DECISIONS.md:390、393-394；tests/scripts/claw.test.js |
 | 補上 block-no-verify 已記錄、實測放行的繞過變體 | 出現真實世界的繞過（實際 session、使用者回報或覆核），或上游合併相關修正，或維護者選定要把 `scripts/hooks/block-no-verify.js` 從字面旗標防護擴到變數間接引用。已知放行：外層雙引號 `g=git; bash -c "$g commit --no-verify"`、ANSI-C `g=git; $'\x24g commit --no-verify'`、`declare -n` nameref、賦值值側引用變數（`h=0; HUSKY=$h git commit`、`GIT_CONFIG_KEY_0=$k`）、未知執行檔 `u=$(x); $u commit --no-verify` | 每個變體先寫紅燈測試（放行 exit 0）再修到擋下（exit 2）；不得讓 `block-no-verify` 既有 819 項、`block-no-verify-shell-state`、`block-no-verify-bypass-review` 轉紅；`HUSKY=False`、`LEFTHOOK=0` 等刻意不擋項維持不擋；分析預算耗盡仍 fail closed | Codex | docs/fork/DECISIONS.md 2026-11-12 F1–F5 已知限制段、2026-11-13 複審與第四輪條目（c069998c、0d6812fe、7e0ca207、8ceb8045、dd1a874f） |
 | 補上 block-no-verify 其餘已記錄的未解析寫法 | 同上，或使用者實際依賴 shell alias、`GIT_CONFIG_*`／`--config-env` alias、PowerShell `Set-Variable`／`${!name}`、變數串接 `h=$g; $h commit`、`"$a$b"` 拼接 | 逐項決定採用或維持「不猜」；採用者先紅後綠，維持者在 DECISIONS 留下理由；不為此引入完整 shell parser 而讓誤擋增加 | Codex | docs/fork/DECISIONS.md 2026-11-12 F1–F5 已知限制段（`alias g=git`、`GIT_CONFIG_*`、`Set-Variable`、串接各條） |
