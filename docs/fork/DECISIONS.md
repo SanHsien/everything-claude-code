@@ -1004,4 +1004,3 @@ Opus 審查判定 fix-first：F1–F5 的原始輸入都擋、無誤擋、測試
 **根因**：不是 workflow 壞掉。`check_upstream_updates.py --strict` 回報 847 個上游 commit 未審（`d2ef2680..upstream/main`，2026-11-23 查上游 HEAD `4adeee67`，`d2ef2680` 仍是其祖先），加上 monitored 釘點 head／state 移動；`--strict` 依設計在有待審項目時 exit 1（run 44870480754，2026-11-21；前兩次 bdf2e337、995dbea7 同因）。
 
 **處理**：不在本輪整棵採用。以 `git merge-tree --merge-base d2ef2680 HEAD upstream/main` 試算：664 檔、+63119／−3789，15 個衝突檔；比照 2026-11-03 的三方合併流程要逐檔裁決並以 fork CI（windows-latest）驗收，另含 MiniMax provider 等新 provider 需要逐筆判斷。記為 ROADMAP 近期列，baseline 不前進。
-
