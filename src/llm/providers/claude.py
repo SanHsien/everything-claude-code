@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 from anthropic import Anthropic
@@ -16,11 +17,19 @@ from llm.core.interface import (
 from llm.core.types import LLMInput, LLMOutput, ModelInfo, ProviderType, Role, ToolCall
 
 _DEFAULT_MODEL = "claude-sonnet-4-6"
-_OPUS_ADAPTIVE_ONLY_PREFIXES = ("claude-opus-4-7", "claude-opus-4-8")
+# Families that reject a non-default temperature/top_p/top_k and take adaptive thinking:
+# Opus 4.7+, Sonnet 5+, Haiku 5.5+, and every Fable and Mythos release.
+_CLAUDE_ID = re.compile(r"claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?!\d)")
+_ADAPTIVE_ONLY_MINIMUMS = {"opus": (4, 7), "sonnet": (5, 0), "haiku": (5, 5), "fable": (0, 0), "mythos": (0, 0)}
 
 
 def _uses_adaptive_thinking_only(model: str) -> bool:
-    return any(model.startswith(prefix) for prefix in _OPUS_ADAPTIVE_ONLY_PREFIXES)
+    match = _CLAUDE_ID.search(model)
+    if match is None:
+        return False
+    minimum = _ADAPTIVE_ONLY_MINIMUMS.get(match.group(1))
+    version = (int(match.group(2)), int(match.group(3) or 0))
+    return minimum is not None and version >= minimum
 
 
 class ClaudeProvider(LLMProvider):

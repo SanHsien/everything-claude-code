@@ -7,7 +7,7 @@ You are helping translate visa application documents for visa applications.
 
 ## Instructions
 
-When the user provides an image file path, AUTOMATICALLY execute the following steps WITHOUT asking for confirmation:
+When the user provides an image file path, run the following steps without asking for confirmation:
 
 1. **Image Conversion**: If the file is HEIC, convert it to PNG using `sips -s format png <input> --out <output>`
 
@@ -17,13 +17,9 @@ When the user provides an image file path, AUTOMATICALLY execute the following s
    - If EXIF orientation is 6, rotate 90 degrees counterclockwise
    - Apply additional rotation as needed (test 180 degrees if document appears upside down)
 
-3. **OCR Text Extraction**:
-   - Try multiple OCR methods automatically:
-     - macOS Vision framework (preferred for macOS)
-     - EasyOCR (cross-platform, no tesseract required)
-     - Tesseract OCR (if available)
-   - Extract all text information from the document
-   - Identify document type (deposit certificate, employment certificate, retirement certificate, etc.)
+3. **Text Extraction**:
+   - Read the text directly from the rotated image and identify the document type (deposit certificate, employment certificate, retirement certificate, etc.)
+   - Use an OCR tool (macOS Vision, EasyOCR, or Tesseract) only when the image is too low-resolution or dense to read reliably, and say which passages came from OCR
 
 4. **Translation**:
    - Translate all text content to English professionally

@@ -981,3 +981,20 @@ Opus 審查判定 fix-first：F1–F5 的原始輸入都擋、無誤擋、測試
 |---:|---|---|---|
 | 224 | `js/file-system-race` `scripts/lib/install/apply.js`（Cursor hooks 合併） | 產品碼的真實「檢查後使用」：先 `fs.existsSync(destination)` 再 `readFileSync`，兩者之間檔案可被換掉或刪除，合併的輸入與判斷依據不是同一份。實際影響低（使用者自己的設定目錄），但寫法可直接消除 | 修：改為單次 `readFileSync`，只有 `ENOENT` 視為「不存在」而走一般複製；其他錯誤（`EISDIR`、`EACCES`）照舊拋出，不改既有「無法解析就丟錯、不覆寫」的行為 |
 | 223 | `js/insecure-temporary-file` `tests/hooks/format-windows-paths.test.js:137` | 測試 fixture 重現 `stop-format-typecheck` 讀取的累積檔名（`os.tmpdir()/ecc-edited-<session>.txt`），檔名由 hook 決定，測試必須用同一路徑 | 不改；比照 #215 以 used in tests 關閉 |
+
+## 2026-11-22：Claude 5 世代取樣參數閘門與 skill 過期模型資訊（prompt audit 第 8 批）
+
+**決定**：改上游檔 `src/llm/providers/claude.py`，把「不送 `temperature`、改送 adaptive thinking」的閘門由 `claude-opus-4-7`／`4-8` 前綴白名單改為依模型家族與版本判斷：Opus 4.7+、Sonnet 5+、Haiku 5.5+、所有 Fable 與 Mythos。另改 4 個上游 skill 的過期事實與寫法。
+
+**理由**：依 claude-api skill 的 `model-migration.md`／`models.md`，上述家族收到非預設 `temperature`／`top_p`／`top_k` 回 400；舊閘門會把 `temperature` 送給 Sonnet 5.5、Opus 5.5、Haiku 5.5、Fable、Mythos。上游 `main` 仍是同一個前綴閘門，等不到上游修。
+
+**範圍**：
+
+- `tests/test_claude_provider.py` 補 17 個 ID 的參數化測試（含 `claude-opus-4-20250514`、`[1m]` 後綴、`anthropic.` 前綴），釘住「這些模型不收 temperature、改送 adaptive」。
+- `skills/cost-aware-llm-pipeline`：範例模型改 `claude-sonnet-5-5`／`claude-haiku-5-5`；價目表刪已退役的 Haiku 3.5、Opus 4.0／4.1，補 Haiku 5.5、Opus 5.5、Fable 5.2。
+- `skills/regex-vs-llm-structured-text`：驗證範例改 `claude-haiku-5-5`，`max_tokens` 500 → 2000（Haiku 5.5 預設開 thinking，thinking 算在 `max_tokens` 內）。
+- `skills/visa-doc-translate`：OCR 由必跑改為低解析／密集影像時的備案；拿掉無理由的全大寫。
+- `skills/openclaw-persona-forge`：description 的 18 個觸發詞改成意圖類別。
+- `pi/core/skills/` 副本由 `node scripts/build-pi-core.js` 重新產生；`manifests/context-packs/skill-triggers@1.json` 只更新 `registryDigest`（skill 內容變了），triggers 不重生——上游 skill 內容修正（如 `c368e857`、`6edc2596`）也是只更新這個欄位。
+
+**限制**：都是上游檔，之後同步上游可能衝突，以上游版本為準時重看這段。`docs/ja-JP`、`docs/zh-CN` 等翻譯版仍釘舊 ID，未動。

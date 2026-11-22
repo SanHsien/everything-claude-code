@@ -184,3 +184,36 @@ def test_generate_without_system_does_not_set_system_or_cache_control() -> None:
     params = provider.client.messages.last_params
     assert "cache_control" not in params
     assert "system" not in params
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("model", "adaptive_only"),
+    [
+        ("claude-sonnet-4-6", False),
+        ("claude-haiku-4-5-20251001", False),
+        ("claude-opus-4-6", False),
+        ("claude-opus-4-20250514", False),
+        ("claude-opus-4-7", True),
+        ("claude-opus-4-8", True),
+        ("claude-opus-4-8[1m]", True),
+        ("claude-opus-5", True),
+        ("claude-opus-5-5", True),
+        ("claude-sonnet-5", True),
+        ("claude-sonnet-5-5", True),
+        ("claude-haiku-5-5", True),
+        ("claude-fable-5", True),
+        ("claude-fable-5-2", True),
+        ("claude-mythos-5-1", True),
+        ("claude-mythos-5-2", True),
+        ("anthropic.claude-sonnet-5-5", True),
+    ],
+)
+def test_sampling_params_are_dropped_on_models_that_reject_them(model: str, adaptive_only: bool) -> None:
+    provider = make_provider(make_response([SimpleNamespace(type="text", text="ok")]))
+
+    provider.generate(LLMInput(messages=[Message(role=Role.USER, content="Hi")], model=model, temperature=0.2))
+
+    params = provider.client.messages.last_params
+    assert ("temperature" in params) is not adaptive_only
+    assert (params.get("thinking") == {"type": "adaptive"}) is adaptive_only
