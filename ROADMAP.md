@@ -10,6 +10,7 @@
 
 | 項目 | 為什麼 | 驗收方式 | 建議執行者 | 證據 |
 | --- | --- | --- | --- | --- |
+| 整棵採用上游 `d2ef2680..4adeee67`（847 個 commit），讓 Upstream check 回綠 | Upstream check 自 `78b42c65`（run 44870480754）起紅：`--strict` 回報 847 個未審 commit；2026-11-23 `git merge-tree --merge-base d2ef2680 HEAD upstream/main` 試算 664 檔、15 個衝突檔 | 比照 2026-11-03 三方合併（base `d2ef2680`），15 個衝突檔逐一裁決、fork overlay 與 hook 解析器實查仍在；`tools\dev_check.ps1` 與 fork CI（windows-latest）綠；`tools/upstream_baseline.json` 推進到採用的 SHA，Upstream check 綠 | Claude Opus | docs/fork/DECISIONS.md 2026-11-23；run 44870480754 |
 | 重評上游條件式監看項目 | 觸發條件已成立（2026-11-21 查：`python tools/check_upstream_updates.py --strict` exit 1：35 個 monitored 釘點有 30 個 head／state 已移動（另有 847 個 commit 未審））。原條件：`python tools/check_upstream_updates.py --strict` 回報 monitored head／state 移動；或維護者選定對應使用場景。#3859 已由 #3871 取代，#3867 的修正提案由 #3870 追蹤 | 依 `tools/upstream_baseline.json` 的釘點與 `docs/fork/DECISIONS.md` 的逐筆條件重審；已合併且獨立的修正才移植，先紅後綠，保留 Windows／secret redaction／EPIPE 邊界；未合併案更新有證據的監看裁決 | Codex | docs/fork/DECISIONS.md 2026-11-04、2026-11-05 與 2026-11-08 條目；tools/upstream_baseline.json monitored |
 
 ## 中期：等條件成立再做

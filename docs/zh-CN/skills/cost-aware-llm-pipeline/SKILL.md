@@ -22,8 +22,8 @@ origin: ECC
 自动为简单任务选择更便宜的模型，为复杂任务保留昂贵的模型。
 
 ```python
-MODEL_SONNET = "claude-sonnet-5"
-MODEL_HAIKU = "claude-haiku-4-5-20251001"
+MODEL_SONNET = "claude-sonnet-5-5"
+MODEL_HAIKU = "claude-haiku-5-5"
 
 _SONNET_TEXT_THRESHOLD = 10_000  # chars
 _SONNET_ITEM_THRESHOLD = 30     # items
@@ -155,13 +155,16 @@ def process(text: str, config: Config, tracker: CostTracker) -> tuple[Result, Co
 
 | 模型 | 输入（美元/百万令牌） | 输出（美元/百万令牌） | 相对成本 |
 |-------|---------------------|----------------------|---------------|
-| Haiku 3.5 (legacy) | $0.80 | $4.00 | 0.8x |
+| Haiku 5.5 (prompt up to 100K tokens) | $0.10 | $0.50 | 0.1x |
 | Haiku 4.5 | $1.00 | $5.00 | 1x |
-| Sonnet 5 | $2.00 | $10.00 | 2x |
+| Sonnet 5 / Sonnet 5.5 | $2.00 | $10.00 | 2x |
 | Sonnet 4.6 | $3.00 | $15.00 | 3x |
+| Opus 5.5 | $4.00 | $20.00 | 4x |
 | Opus 4.8 | $5.00 | $25.00 | 5x |
-| Fable 5 / Mythos 5 | $10.00 | $50.00 | 10x |
-| Opus 4.0 / 4.1 (legacy) | $15.00 | $75.00 | 15x |
+| Fable 5.2 | $8.00 | $40.00 | 8x |
+| Fable 5 / 5.1, Mythos 5 / 5.1 | $10.00 | $50.00 | 10x |
+
+价格会随版本变动；在硬编码阈值之前，请先在 Anthropic 的定价页面确认。
 
 ## 最佳实践
 
