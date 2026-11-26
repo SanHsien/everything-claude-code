@@ -64,11 +64,20 @@ def _tag_re(prefix: str = "") -> re.Pattern[str]:
     return re.compile("^" + re.escape(prefix) + r"v?(\d+)\.(\d+)(?:\.(\d+))?$")
 
 
-# `gh pr|issue list` has no offset, only `--limit`. Start small and grow the limit until the
-# listing reaches the reviewed watermark, so a fast-moving upstream is never silently truncated.
-# If even the cap does not reach the watermark the scan is reported incomplete -- never as clean.
+# Issues retain the bounded `gh issue list` lookup. Pull requests use a GraphQL cursor.
 TICKET_LIMIT_START = 100
 TICKET_LIMIT_CAP = 1000
+PR_PAGE_SIZE = 100
+PR_PAGE_QUERY = """
+query($owner: String!, $repo: String!, $count: Int!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: $count, after: $cursor, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { number title createdAt }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
 # Every external call is bounded: a hung `git fetch` or `gh` must end as exit 2, not as a CI job
 # that runs until the platform kills it.
 GIT_TIMEOUT = 1200
@@ -457,6 +466,79 @@ def _list_tickets(slug: str, kind: str, limit: int) -> list[dict] | str | None:
     return items
 
 
+def _pull_request_page(
+    slug: str, count: int, cursor: str | None
+) -> tuple[list[dict], str | None] | None:
+    owner, repo = slug.split("/", 1)
+    args = [
+        "api",
+        "graphql",
+        "-f",
+        f"query={PR_PAGE_QUERY}",
+        "-f",
+        f"owner={owner}",
+        "-f",
+        f"repo={repo}",
+        "-F",
+        f"count={count}",
+    ]
+    if cursor is not None:
+        args.extend(["-f", f"cursor={cursor}"])
+    result = run_gh(args)
+    if result is None or result.returncode != 0:
+        return None
+    try:
+        payload = json.loads(result.stdout)
+        if payload.get("errors"):
+            return None
+        connection = payload["data"]["repository"]["pullRequests"]
+        items = connection["nodes"]
+        page = connection["pageInfo"]
+        more = page["hasNextPage"]
+        next_cursor = page["endCursor"]
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+    if not isinstance(items, list) or len(items) > count or type(more) is not bool:
+        return None
+    if not all(isinstance(item, dict) and type(item.get("number")) is int for item in items):
+        return None
+    if more and (not items or not isinstance(next_cursor, str) or not next_cursor):
+        return None
+    return items, next_cursor if more else None
+
+
+def _scan_pull_requests(slug: str, watermark: int, cap: int | None) -> TicketScan | None:
+    items: list[dict] = []
+    cursor = None
+    cursors = set()
+    while cap is None or len(items) < cap:
+        count = PR_PAGE_SIZE if cap is None else min(PR_PAGE_SIZE, cap - len(items))
+        page = _pull_request_page(slug, count, cursor)
+        if page is None:
+            return None
+        batch, cursor = page
+        numbers = [item["number"] for item in batch]
+        if items:
+            numbers.insert(0, items[-1]["number"])
+        if any(
+            previous <= current for previous, current in zip(numbers, numbers[1:], strict=False)
+        ):
+            return None
+        items.extend(batch)
+        if cursor is None or any(item["number"] <= watermark + 1 for item in batch):
+            break
+        if cursor in cursors:
+            return None
+        cursors.add(cursor)
+    listed = frozenset(item["number"] for item in items)
+    floor = min(listed, default=None)
+    complete = cursor is None or (floor is not None and floor <= watermark + 1)
+    new = sorted((item for item in items if item["number"] > watermark), key=lambda i: i["number"])
+    return TicketScan(
+        new, complete, cap or len(items), listed=listed, floor=floor, watermark=watermark
+    )
+
+
 def _instant(text: object) -> datetime | None:
     """An ISO-8601 timestamp (``Z`` or an offset) as an aware datetime; ``None`` if unreadable."""
     try:
@@ -498,7 +580,7 @@ def collect_new_tickets(
     baseline: dict,
     kind: str,
     repo_dir: Path | None = None,
-    cap: int = TICKET_LIMIT_CAP,
+    cap: int | None = None,
     cutoff: str | None = None,
 ) -> TicketScan | None:
     """List upstream items numbered above the watermark; ``None`` means "could not check"."""
@@ -506,6 +588,10 @@ def collect_new_tickets(
     if not slug:
         return None
     watermark = int(baseline.get(f"reviewed_{kind}_through", 0) or 0)
+    if kind == "pr":
+        scan = _scan_pull_requests(slug, watermark, cap)
+        return defer_after(scan, cutoff) if scan is not None else None
+    cap = TICKET_LIMIT_CAP if cap is None else cap
     limit = min(TICKET_LIMIT_START, cap)
     while True:
         items = _list_tickets(slug, kind, limit)
@@ -1148,15 +1234,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--ticket-cap",
         type=int,
-        default=TICKET_LIMIT_CAP,
-        help="Largest listing asked of gh before the scan is reported INCOMPLETE.",
+        help="Limit tickets per type (default: page PRs to the watermark, cap issues at 1000).",
     )
     parser.add_argument(
         "--strict",
         action="store_true",
         help="Return 1 when something requires review (2 still means the check failed).",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.ticket_cap is not None and args.ticket_cap < 1:
+        parser.error("--ticket-cap must be positive")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
